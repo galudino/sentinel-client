@@ -34,7 +34,11 @@ live BME280 telemetry, system event log retrieval, snapshot history + live
 snapshot capture, OTA DFU via MCUBoot. Companion to
 [github.com/galudino/sentinel-firmware](https://github.com/galudino/sentinel-firmware).
 
-- **Targets:** iOS 17+ (Phase I), iPadOS 17+ (Phase II), macOS 14+ (Phase III)
+- **Phases (4):** I = iOS MVP (core sensors); II = sensor/peripheral expansion
+  + refinements (mirrors firmware Phase II driver expansion; umbrella #27);
+  III = iPadOS adaptation; IV = macOS support. (Phase II was inserted between
+  the old I and II, bumping the platform phases to III/IV.)
+- **Targets:** iOS 17+ (Phase I/II), iPadOS 17+ (Phase III), macOS 14+ (Phase IV)
 - **Toolchain:** Xcode 15+, Swift 5.9+, SwiftUI, `@Observable` (not the older
   `ObservableObject`/`@Published`)
 - **BLE:** [`AsyncBluetooth`](https://github.com/manolofdez/AsyncBluetooth) SPM
@@ -43,7 +47,7 @@ snapshot capture, OTA DFU via MCUBoot. Companion to
 - **Xcode project root:** `Sentinel/` (target name "Sentinel";
   `Sentinel.xcodeproj`, `SentinelTests`, `SentinelUITests`).
 
-**Status:** project board + 26 issues authored; **zero app code written** beyond
+**Status:** project board + 26 issues authored (#2–#27; no #1); **zero app code written** beyond
 the stock Xcode template. Everything is forward-spec.
 
 ---
@@ -103,6 +107,22 @@ or `ConnectedPeer`) so previews inject mocks.
 `BluetoothManager` is `@unchecked Sendable` for now. Proper Swift 6 strict-
 concurrency hardening is tracked separately in issue **#24** (Phase II).
 
+### Snapshot logging is a generic, preserved architecture (#17)
+
+The snapshot-logging subsystem (#17) is ported faithfully from the proven prior
+design — keep it; it's genuinely generic. A `Snapshot` protocol (assoc.
+`Category`) + a `SnapshotDataProvider` (assoc. `S: Snapshot`) make the whole
+configure/capture/chart/export stack (`SnapshotLoggingManager<Provider>`,
+`SnapshotLoggingView<Provider>`) work for ANY snapshot type via one code path.
+`DeviceSnapshot` is the Phase I conformer; Phase II per-sensor snapshots plug in
+with only a new `Snapshot` + `SnapshotDataProvider` (no manager/view changes).
+Type names are already project-neutral — don't rename them. The ONE substantive
+*new* deliverable is **chart performance on long (30–60 min+) sessions**:
+display-only decimation (min/max-per-bucket), viewport-aware re-decimation on
+zoom, debounced scrub, `.drawingGroup()`; full-resolution data is always kept
+for export. Sessions are already file-based (entries on disk, lazy-loaded) — keep
+that.
+
 ---
 
 ## Navigation model
@@ -126,13 +146,17 @@ RootView  (AppRouter-driven, #7)
 
 ### Key UI decisions
 
-- **`ControlPanelView` was renamed `DeviceView`** (#18). It is the home for
-  everything *about the connected device*: About info, firmware update entry,
-  time sync, storage clears, Debug Output Stream access, Phase-II sensor
-  configuration, and a **diagnostic GATT Explorer** (browse every service →
-  characteristic; typed read/write; dec/hex/oct/utf-8/raw format toggle). The
-  Explorer is the first place a new characteristic is exercised before being
-  promoted into a polished view.
+- **`DeviceView` is a navigation-list hub, not one inline screen** (#18). It
+  lists categories; each row opens a focused subview (DeviceInfo, Firmware,
+  Time & Date, Storage, Debug Stream, GATT Explorer, + Phase-II per-chip config
+  subviews). iPhone = pushed `NavigationLink` list; iPad/macOS =
+  `NavigationSplitView` (sidebar + detail). Driven by a `DeviceCategory` enum +
+  title/symbol mapping — mirrors the proven control-panel-hub pattern (a hub
+  routing to per-section subviews), NOT a giant inline form. The **GATT
+  Explorer** subview is itself a drill-down (services → characteristics →
+  detail with typed read/write + dec/hex/oct/utf-8/raw toggle), catalog-driven
+  so new characteristics appear for free. It's the first place a new
+  characteristic is exercised before promotion into a polished view.
 - **SettingsView (#19) is APP preferences ONLY** — theme, units, notifications,
   paired-peer management. Device-side concerns live in DeviceView. (Reviewer
   check: no firmware/device affordances in Settings.)
@@ -169,8 +193,12 @@ start today:
 
 - **Repository:** [github.com/galudino/sentinel-client](https://github.com/galudino/sentinel-client)
 - **Project board:** `galudino/projects/4` — project ID `PVT_kwHOAbZCmc4BZ6kp`
-- **Milestones:** Phase I (MVP on iOS) M1, Phase II (iPadOS adaptation) M2,
-  Phase III (macOS support) M3
+- **Milestones (4):** Phase I (MVP on iOS) `M1`; Phase II (Sensor/peripheral
+  expansion + refinements) `M4`; Phase III (iPadOS adaptation) `M2`; Phase IV
+  (macOS support) `M3`. NB: GitHub milestone *numbers* are immutable, so the
+  internal numbers no longer match phase order (Phase II = M4). Titles are
+  authoritative; the milestones page sorts correctly under **alphabetical** sort
+  ("Phase I" < "Phase II" < … by prefix). Don't rely on milestone numbers.
 - **`gh`** fully configured (`repo` + `read:project` + `project` scopes).
 - **Project field IDs:**
 
@@ -192,9 +220,11 @@ start today:
 
 ### Issue map
 
+- **All 26 issues assigned to `galudino`.**
 - **#2** Project: Initial Xcode scaffold (Done)
 - **#3** Main client application: Phase I (umbrella; In progress; parents the rest)
-- **#4/#5/#6** Platform Support: iOS / iPadOS / macOS (Platform Backlog)
+- **#4** Platform Support: iOS (Phase I) · **#5** iPadOS (Phase III) ·
+  **#6** macOS (Phase IV)
 - **#7** Architecture: SwiftUI navigation + state machine (Ready)
 - **#8** BLE: AsyncBluetooth controller + service clients (Ready — FOUNDATION)
 - **#9** BLE: GATT service contract (Ready — blocked on firmware #6 UUIDs)
@@ -208,6 +238,9 @@ start today:
 - **#24** Concurrency: Swift 6 strict concurrency hardening (General Backlog; Phase II)
 - **#25** DebugOutputStreamView (General Backlog)
 - **#26** SplashView (Ready — dependency-free first task)
+- **#27** Sensor/peripheral expansion umbrella (General Backlog; Phase II) —
+  per-chip checklist for picking up firmware-backlog sensors as their GATT
+  services land; mirrors firmware Phase II.
 
 ---
 

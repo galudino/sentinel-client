@@ -54,22 +54,44 @@ the stock Xcode template. Everything is forward-spec.
 
 ## Architecture (decided; not yet implemented)
 
-### Two-layer protocol design (issue #8 is the foundation)
+### Central / connection split + two-layer protocols (issue #8 is the foundation)
+
+Mirrors CoreBluetooth's own model:
+- **`BluetoothManager`** = the *central* (scan / connect / connection-state).
+  One per app. Does NOT do characteristic I/O; does NOT retain the connected
+  peripheral. `connect()` **returns** a `ConnectedPeer`.
+- **`ConnectedPeer`** = one *active connection*. Owns the `Peripheral`,
+  **conforms to `BluetoothPeripheralTransport`** (read/write/notify live here),
+  holds live per-connection state (RSSI/MTU), and vends the service clients.
+  Exists only while connected. Its `peripheral` property is the sole owner (no
+  duplicate on the manager).
 
 ```
 SwiftUI views + view models
-        │  (depend on `any BME280Service`, `any EventLogService`, etc.)
+        │  leaf views depend on `any <Chip>Service` (mock-injectable);
+        │  containers read @Environment(ConnectedPeer.self)
         ▼
   Per-service protocols            ── mocked freely for tests + previews
         ▼
-  *ServiceClient<Transport>        generic; holds a transport reference
+  *ServiceClient<Transport>        generic; transport = ConnectedPeer (prod)
         ▼
-  BluetoothPeripheralTransport     ── mocked freely for client unit tests
-        ▼  (real conformance)
-  BluetoothManager (@Observable)   owns the AsyncBluetooth CentralManager
+  BluetoothPeripheralTransport     ── ConnectedPeer (real) | MockBluetoothTransport (test)
         ▼
-  AsyncBluetooth → CoreBluetooth
+  ConnectedPeer  ── created by BluetoothManager.connect(); owns the Peripheral
+        ▼
+  BluetoothManager (central: scan/connect/state)  →  AsyncBluetooth → CoreBluetooth
 ```
+
+### Dependency injection — NO singletons
+
+App-wide `@Observable` objects (`BluetoothManager`, `AppRouter`,
+`PairedPeerStore`, `AppPreferences`, snapshot logging managers) are created in
+the `App` struct's `init()`, injected via `.environment(...)`, read via
+`@Environment`. **No `.shared` anywhere** (matches the voomair idiom).
+`ConnectedPeer` is injected into the **connected subtree only** (RootView's
+`.connected`/`.updatingFirmware` branches do `.environment(peer)`), so the
+"connection exists only while connected" invariant is structural, not optional-
+guarded.
 
 ### Naming conventions (LOCKED — mirror firmware)
 
@@ -77,10 +99,10 @@ SwiftUI views + view models
 |---|---|---|
 | Chip-specific GATT service protocol | `<Chip>Service` | `BME280Service`, `DS3231Service` (Phase I); `SCD41Service`, `SGP30Service`, `TMP117Service`, `DS18B20Service` (Phase II) |
 | Aggregate / cross-cutting service protocol | `<Function>Service` | `LiveTelemetryService`, `SnapshotHistoryService`, `SystemService`, `EventLogService`, `OTAService`, `DebugStreamService` |
-| Real generic impl | `<Name>ServiceClient<Transport>` | `BME280ServiceClient<BluetoothManager>` |
+| Real generic impl | `<Name>ServiceClient<Transport>` | `BME280ServiceClient<ConnectedPeer>` |
 | Mock for tests/previews | `Mock<Name>Service` | `MockBME280Service` |
 | Transport protocol | `BluetoothPeripheralTransport` | — |
-| Real transport | `BluetoothManager` (conforms via extension) | — |
+| Real transport | `ConnectedPeer` (conforms) | — |
 | Mock transport | `MockBluetoothTransport` | — |
 
 **Sensors are CHIP-NAMED, never a generic `SensorService`.** This mirrors the
@@ -99,8 +121,10 @@ Two strategies, both enabled by the protocol layering:
 2. Mock the service (`MockBME280Service`), exercise the view → catches UI bugs
    with zero BLE involvement; also makes every SwiftUI Preview trivial.
 
-Every view takes `any *Service` in its init (never a concrete `BluetoothManager`
-or `ConnectedPeer`) so previews inject mocks.
+Leaf views take `any *Service` in init (never a concrete `ConnectedPeer`) so
+previews inject `Mock*Service`. Container/tab views read
+`@Environment(ConnectedPeer.self)` and pass `peer.<service>` down. Container
+previews inject a fresh `BluetoothManager()` / `AppRouter` (voomair idiom).
 
 ### `@unchecked Sendable` is intentional for Phase I
 
@@ -122,6 +146,23 @@ display-only decimation (min/max-per-bucket), viewport-aware re-decimation on
 zoom, debounced scrub, `.drawingGroup()`; full-resolution data is always kept
 for export. Sessions are already file-based (entries on disk, lazy-loaded) — keep
 that.
+
+### OTA DFU wire protocol (#22)
+
+The firmware's BLE OTA is the WICED **OTA FW Upgrade Service** (the
+`ota-update` library's protocol; MCUBoot runs on-device afterward). Confirmed
+against Infineon's `btsdk-peer-apps-ota` iOS reference — **protocol reused, code
+not** (it's UIKit/CoreBluetooth/delegate-callbacks; we're SwiftUI/AsyncBluetooth/
+async-await). Concrete details now live in #22:
+- Service `ae5d1e47-…`; Control Point `a3dd50bf-…` (write cmds + indicate
+  status); Control Data `a2e86c7a-…` (image chunks). **Source the real UUIDs
+  from firmware #6** — don't hardcode the reference app's.
+- Commands: PrepareDownload(1) → StartDownload(2,+uint32 size) → write chunks →
+  Verify(3,+uint32 CRC32). CRC32 = standard zlib (poly `0xEDB88320`, init/final
+  `0xFFFFFFFF`). Chunk = MTU−3 (negotiate; don't hardcode 244).
+- **Device self-resets + disconnects after a successful Verify** → treat that
+  disconnect as success, then reconnect + confirm version. Cancel is a no-op
+  from `.validating` onward (point of no return).
 
 ---
 

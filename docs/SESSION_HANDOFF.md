@@ -104,7 +104,7 @@ guarded.
 | Role | Convention | Examples |
 |---|---|---|
 | Chip-specific GATT service protocol | `<Chip>Service` | `BME280Service`, `DS3231Service` (Phase I); `SCD41Service`, `SGP30Service`, `TMP117Service`, `DS18B20Service` (Phase II) |
-| Aggregate / cross-cutting service protocol | `<Function>Service` | `LiveTelemetryService`, `SnapshotHistoryService`, `SystemService`, `SystemEventLogService`, `OTAService`, `DebugStreamService` |
+| Aggregate / cross-cutting service protocol | `<Function>Service` | `SnapshotStreamService`, `SnapshotHistoryService`, `SystemService`, `SystemEventLogService`, `OTAService`, `DebugStreamService` |
 | Real generic impl | `<Name>ServiceClient<Transport>` | `BME280ServiceClient<ConnectedPeer>` |
 | Mock for tests/previews | `Mock<Name>Service` | `MockBME280Service` |
 | Transport protocol | `BluetoothPeripheralTransport` | — |
@@ -126,7 +126,7 @@ read per field. BME280 = a single `BME280Sample` (`Int16` 0.01 °C, `UInt16`
 0.01 %RH, `UInt32` Pa, 8 B), not three characteristics. Split only when the
 registers are genuinely independent (DS3231 = Unix-time / temp / alarm-flags).
 Aggregate service names are descriptive and locked 1:1 with firmware: `System`,
-`LiveTelemetry`, `SnapshotHistory`, `SystemEventLog`, `OTA`, `DebugStream`.
+`SnapshotStream`, `SnapshotHistory`, `SystemEventLog`, `OTA`, `DebugStream`.
 Firmware #6 owns the contract + UUIDs; #9 mirrors it (no client-side invention).
 
 ### Testability

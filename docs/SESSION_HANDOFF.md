@@ -93,7 +93,7 @@ SwiftUI views + view models
 App-wide `@Observable` objects (`BluetoothManager`, `AppRouter`,
 `PairedPeerStore`, `AppPreferences`, snapshot logging managers) are created in
 the `App` struct's `init()`, injected via `.environment(...)`, read via
-`@Environment`. **No `.shared` anywhere** (matches the voomair idiom).
+`@Environment`. **No `.shared` anywhere.**
 `ConnectedPeer` is injected into the **connected subtree only** (RootView's
 `.connected`/`.updatingFirmware` branches do `.environment(peer)`), so the
 "connection exists only while connected" invariant is structural, not optional-
@@ -140,7 +140,7 @@ Two strategies, both enabled by the protocol layering:
 Leaf views take `any *Service` in init (never a concrete `ConnectedPeer`) so
 previews inject `Mock*Service`. Container/tab views read
 `@Environment(ConnectedPeer.self)` and pass `peer.<service>` down. Container
-previews inject a fresh `BluetoothManager()` / `AppRouter` (voomair idiom).
+previews inject a fresh `BluetoothManager()` / `AppRouter`.
 
 ### `@unchecked Sendable` is intentional for Phase I
 
@@ -293,14 +293,14 @@ start today:
 - **#10/#11** Decoders: device_snapshot / system_event_record (Ready)
 - **#12** PeripheralScanView (Ready) · **#13** ConnectingView (Ready) ·
   **#14** MainTabView (Ready)
-- **#15–#19** Tabs: Home / Logs / Snapshots / Device / Settings (General Backlog)
+- **#15–#19** Tabs: Home / Logs / Snapshots / Device / Settings (Backlog)
 - **#20** FirmwareSelectionView · **#21** FirmwareUpdateView ·
-  **#22** OTA upload state machine (General Backlog)
-- **#23** Persistence: paired peer registry (General Backlog)
-- **#24** Concurrency: Swift 6 strict concurrency hardening (General Backlog; Phase II)
-- **#25** DebugOutputStreamView (General Backlog)
+  **#22** OTA upload state machine (Backlog)
+- **#23** Persistence: paired peer registry (Backlog)
+- **#24** Concurrency: Swift 6 strict concurrency hardening (Backlog; Phase II)
+- **#25** DebugOutputStreamView (Backlog)
 - **#26** SplashView (Ready — dependency-free first task)
-- **#27** Sensor/peripheral expansion umbrella (General Backlog; Phase II) —
+- **#27** Sensor/peripheral expansion umbrella (Backlog; Phase II) —
   per-chip checklist for picking up firmware-backlog sensors as their GATT
   services land; mirrors firmware Phase II.
 
@@ -308,10 +308,9 @@ start today:
 
 ## Repo setup to-dos (not yet done)
 
-- **No `develop` branch exists yet** — only `main`. Before the first feature
-  branch, create it: `git checkout -b develop main && git push -u origin develop`.
-  Then follow the same git-flow as firmware (branch off develop, tag pre-squash,
-  squash-merge to develop, `--no-ff` merge develop→main).
+- **`develop` branch now exists** (created 2026-06-09 alongside the first docs
+  branch). Follow the same git-flow as firmware: branch off `develop`, tag
+  pre-squash, squash-merge to `develop`, `--no-ff` merge develop→main.
 - **`.claude/` is NOT in `.gitignore`** (firmware repo gitignores it). Add it
   before committing if you don't want local Claude state tracked.
 - **README.md is a 158-byte stub** — flesh out when there's something to show

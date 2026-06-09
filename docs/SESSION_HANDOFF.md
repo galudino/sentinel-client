@@ -5,8 +5,9 @@ join the project partway through. Update at the end of any session that
 introduced new architectural decisions, new GitHub infrastructure, or
 non-obvious constraints. Keep under ~350 lines.
 
-**Last updated:** 2026-06-08 (initial project board + issue scaffolding;
-no app code written yet beyond the stock Xcode template)
+**Last updated:** 2026-06-09 (merged onto the shared `sentinel` board; GATT
+contract sync with firmware #6 — descriptive aggregate names + BME280 one-shot
+sample; phase milestone-epics; Phase III/IV redefined. No app code yet.)
 
 ---
 
@@ -36,9 +37,11 @@ snapshot capture, OTA DFU via MCUBoot. Companion to
 
 - **Phases (4):** I = iOS MVP (core sensors); II = sensor/peripheral expansion
   + refinements (mirrors firmware Phase II driver expansion; umbrella #27);
-  III = iPadOS adaptation; IV = macOS support. (Phase II was inserted between
-  the old I and II, bumping the platform phases to III/IV.)
-- **Targets:** iOS 17+ (Phase I/II), iPadOS 17+ (Phase III), macOS 14+ (Phase IV)
+  III = **iPadOS + macOS** multi-platform adaptation; IV = **cloud REST API
+  integration** (S3 OTA-DFU file storage + event-log / snapshot upload, partitioned
+  by device serial number; issue #32 — spec TBD). Each phase has a `Main client
+  application: Phase N` milestone-epic (#3 / #30 / #28 / #31) under root epic #29.
+- **Targets:** iOS 17+ (Phase I/II); iPadOS 17+ & macOS 14+ (Phase III); AWS (Phase IV)
 - **Toolchain:** Xcode 15+, Swift 5.9+, SwiftUI, `@Observable` (not the older
   `ObservableObject`/`@Published`)
 - **BLE:** [`AsyncBluetooth`](https://github.com/manolofdez/AsyncBluetooth) SPM
@@ -47,8 +50,11 @@ snapshot capture, OTA DFU via MCUBoot. Companion to
 - **Xcode project root:** `Sentinel/` (target name "Sentinel";
   `Sentinel.xcodeproj`, `SentinelTests`, `SentinelUITests`).
 
-**Status:** project board + 26 issues authored (#2–#27; no #1); **zero app code written** beyond
-the stock Xcode template. Everything is forward-spec.
+**Status:** issues authored through #32; **zero app code written** beyond the
+stock Xcode template — everything is forward-spec. Tracked on the **merged
+`sentinel` board** (`galudino/projects/2`) shared with firmware; the standalone
+client board (the old `projects/4`) was deleted 2026-06-08. Per-repo focus =
+saved Views filtered by `repository:`.
 
 ---
 
@@ -87,7 +93,7 @@ SwiftUI views + view models
 App-wide `@Observable` objects (`BluetoothManager`, `AppRouter`,
 `PairedPeerStore`, `AppPreferences`, snapshot logging managers) are created in
 the `App` struct's `init()`, injected via `.environment(...)`, read via
-`@Environment`. **No `.shared` anywhere** (matches the voomair idiom).
+`@Environment`. **No `.shared` anywhere.**
 `ConnectedPeer` is injected into the **connected subtree only** (RootView's
 `.connected`/`.updatingFirmware` branches do `.environment(peer)`), so the
 "connection exists only while connected" invariant is structural, not optional-
@@ -98,7 +104,7 @@ guarded.
 | Role | Convention | Examples |
 |---|---|---|
 | Chip-specific GATT service protocol | `<Chip>Service` | `BME280Service`, `DS3231Service` (Phase I); `SCD41Service`, `SGP30Service`, `TMP117Service`, `DS18B20Service` (Phase II) |
-| Aggregate / cross-cutting service protocol | `<Function>Service` | `LiveTelemetryService`, `SnapshotHistoryService`, `SystemService`, `EventLogService`, `OTAService`, `DebugStreamService` |
+| Aggregate / cross-cutting service protocol | `<Function>Service` | `SnapshotStreamService`, `SnapshotHistoryService`, `SystemService`, `SystemEventLogService`, `OTAService`, `DebugStreamService` |
 | Real generic impl | `<Name>ServiceClient<Transport>` | `BME280ServiceClient<ConnectedPeer>` |
 | Mock for tests/previews | `Mock<Name>Service` | `MockBME280Service` |
 | Transport protocol | `BluetoothPeripheralTransport` | — |
@@ -113,6 +119,16 @@ uses AsyncBluetooth's `PeripheralDataConvertible` + `TriviallyCopyable`
 (`data.readValue()` byte-exact) on `@frozen` POD mirrors of the firmware
 structs.
 
+**One-shot-sample rule (mirrors firmware #6).** Where a sensor IC + driver
+return all fields in one read, the firmware exposes ONE packed-struct
+characteristic and the client decodes the whole struct in one read — NOT one
+read per field. BME280 = a single `BME280Sample` (`Int16` 0.01 °C, `UInt16`
+0.01 %RH, `UInt32` Pa, 8 B), not three characteristics. Split only when the
+registers are genuinely independent (DS3231 = Unix-time / temp / alarm-flags).
+Aggregate service names are descriptive and locked 1:1 with firmware: `System`,
+`SnapshotStream`, `SnapshotHistory`, `SystemEventLog`, `OTA`, `DebugStream`.
+Firmware #6 owns the contract + UUIDs; #9 mirrors it (no client-side invention).
+
 ### Testability
 
 Two strategies, both enabled by the protocol layering:
@@ -124,7 +140,7 @@ Two strategies, both enabled by the protocol layering:
 Leaf views take `any *Service` in init (never a concrete `ConnectedPeer`) so
 previews inject `Mock*Service`. Container/tab views read
 `@Environment(ConnectedPeer.self)` and pass `peer.<service>` down. Container
-previews inject a fresh `BluetoothManager()` / `AppRouter` (voomair idiom).
+previews inject a fresh `BluetoothManager()` / `AppRouter`.
 
 ### `@unchecked Sendable` is intentional for Phase I
 
@@ -233,53 +249,58 @@ start today:
 ## GitHub infrastructure
 
 - **Repository:** [github.com/galudino/sentinel-client](https://github.com/galudino/sentinel-client)
-- **Project board:** `galudino/projects/4` — project ID `PVT_kwHOAbZCmc4BZ6kp`
-- **Milestones (4):** Phase I (MVP on iOS) `M1`; Phase II (Sensor/peripheral
-  expansion + refinements) `M4`; Phase III (iPadOS adaptation) `M2`; Phase IV
-  (macOS support) `M3`. NB: GitHub milestone *numbers* are immutable, so the
-  internal numbers no longer match phase order (Phase II = M4). Titles are
-  authoritative; the milestones page sorts correctly under **alphabetical** sort
-  ("Phase I" < "Phase II" < … by prefix). Don't rely on milestone numbers.
+- **Project board:** the **merged `sentinel` board** — `galudino/projects/2`,
+  project ID `PVT_kwHOAbZCmc4BYDDx` (shared with firmware; the old standalone
+  client board `projects/4` / `PVT_kwHOAbZCmc4BZ6kp` was **deleted** 2026-06-08,
+  so its field/option IDs are dead — use the IDs below).
+- **Milestones (repo, client):** Phase I (MVP on iOS); Phase II (Sensor/peripheral
+  expansion + refinements); Phase III (iPadOS + macOS support); Phase IV (Cloud
+  REST API integration). Titles are authoritative; don't rely on milestone numbers.
 - **`gh`** fully configured (`repo` + `read:project` + `project` scopes).
-- **Project field IDs:**
+- **Project field IDs (on the merged board — same as firmware's handoff):**
 
   | Field | ID |
   |---|---|
-  | Status | `PVTSSF_lAHOAbZCmc4BZ6kpzhU14To` |
-  | Priority | `PVTSSF_lAHOAbZCmc4BZ6kpzhU14l0` |
-  | Size | `PVTSSF_lAHOAbZCmc4BZ6kpzhU14l4` |
-  | Start date | `PVTF_lAHOAbZCmc4BZ6kpzhU14l8` |
-  | Target date | `PVTF_lAHOAbZCmc4BZ6kpzhU14mA` |
-  | Estimate | `PVTF_lAHOAbZCmc4BZ6kpzhU14mE` |
+  | Status | `PVTSSF_lAHOAbZCmc4BYDDxzhTLlPE` |
+  | Phase | `PVTSSF_lAHOAbZCmc4BYDDxzhU_3FM` |
+  | Priority | `PVTSSF_lAHOAbZCmc4BYDDxzhTLlU8` |
+  | Size | `PVTSSF_lAHOAbZCmc4BYDDxzhTLlVA` |
+  | Start date | `PVTF_lAHOAbZCmc4BYDDxzhTLlVI` |
 
-- **Status option IDs:** Platform Backlog `c2572c94`, General Backlog `59e97350`,
-  Ready `44704dd5`, In progress `f7bcb858`, In review `65d3c066`,
-  On Hold/Blocked `002f3b32`, Done `7d76283f`.
-- **Priority option IDs:** P0 `22dd173d`, P1 `e9ede4d3`, P2 `6199b95d`.
-- **Size option IDs:** XS `789e3aa5`, S `b11167fb`, M `6b8fb536`,
-  L `afcf795f`, XL `cbb0dedd`.
+- **Status option IDs:** Backlog `18fe16c9`, Ready `61e4505c`, In Progress
+  `47fc9ee4`, In Review `df73e18b`, On Hold/Blocked `06bd8365`, Done `98236657`.
+- **Phase option IDs:** Phase I `eb79509f`, II `2bd5ada7`, III `f009f762`, IV `a59b2206`.
+- **Priority option IDs:** P0 `79628723`, P1 `0a877460`, P2 `da944a9c`.
+- **Size option IDs:** XS `6c6483d2`, S `f784b110`, M `7515a9f1`, L `817d0097`, XL `db339eb2`.
+- **Labels:** namespaced — `platform:`, `area:`, `swift:`, `subsystem:`, `test:`,
+  plus `milestone` (phase-epic marker) and `project config: xcode`. The
+  `subsystem:` set (ble/dfu/event-log/snapshot/debug) is spelled identically on
+  the firmware repo.
 
 ### Issue map
 
-- **All 26 issues assigned to `galudino`.**
+- **All issues (through #32) assigned to `galudino`.** Structure: root epic **#29**
+  *Main client application* parents the phase milestone-epics **#3** (I), **#30** (II,
+  parents #27), **#28** (III, parents #5/#6), **#31** (IV, parents #32). The
+  `Main client application: Phase N` epics carry the `milestone` label.
 - **#2** Project: Initial Xcode scaffold (Done)
 - **#3** Main client application: Phase I (umbrella; In progress; parents the rest)
-- **#4** Platform Support: iOS (Phase I) · **#5** iPadOS (Phase III) ·
-  **#6** macOS (Phase IV)
+- **#4** Platform Support: iOS (Phase I) · **#5** iPadOS & **#6** macOS
+  (both Phase III, under #28)
 - **#7** Architecture: SwiftUI navigation + state machine (Ready)
 - **#8** BLE: AsyncBluetooth controller + service clients (Ready — FOUNDATION)
 - **#9** BLE: GATT service contract (Ready — blocked on firmware #6 UUIDs)
 - **#10/#11** Decoders: device_snapshot / system_event_record (Ready)
 - **#12** PeripheralScanView (Ready) · **#13** ConnectingView (Ready) ·
   **#14** MainTabView (Ready)
-- **#15–#19** Tabs: Home / Logs / Snapshots / Device / Settings (General Backlog)
+- **#15–#19** Tabs: Home / Logs / Snapshots / Device / Settings (Backlog)
 - **#20** FirmwareSelectionView · **#21** FirmwareUpdateView ·
-  **#22** OTA upload state machine (General Backlog)
-- **#23** Persistence: paired peer registry (General Backlog)
-- **#24** Concurrency: Swift 6 strict concurrency hardening (General Backlog; Phase II)
-- **#25** DebugOutputStreamView (General Backlog)
+  **#22** OTA upload state machine (Backlog)
+- **#23** Persistence: paired peer registry (Backlog)
+- **#24** Concurrency: Swift 6 strict concurrency hardening (Backlog; Phase II)
+- **#25** DebugOutputStreamView (Backlog)
 - **#26** SplashView (Ready — dependency-free first task)
-- **#27** Sensor/peripheral expansion umbrella (General Backlog; Phase II) —
+- **#27** Sensor/peripheral expansion umbrella (Backlog; Phase II) —
   per-chip checklist for picking up firmware-backlog sensors as their GATT
   services land; mirrors firmware Phase II.
 
@@ -287,10 +308,9 @@ start today:
 
 ## Repo setup to-dos (not yet done)
 
-- **No `develop` branch exists yet** — only `main`. Before the first feature
-  branch, create it: `git checkout -b develop main && git push -u origin develop`.
-  Then follow the same git-flow as firmware (branch off develop, tag pre-squash,
-  squash-merge to develop, `--no-ff` merge develop→main).
+- **`develop` branch now exists** (created 2026-06-09 alongside the first docs
+  branch). Follow the same git-flow as firmware: branch off `develop`, tag
+  pre-squash, squash-merge to `develop`, `--no-ff` merge develop→main.
 - **`.claude/` is NOT in `.gitignore`** (firmware repo gitignores it). Add it
   before committing if you don't want local Claude state tracked.
 - **README.md is a 158-byte stub** — flesh out when there's something to show

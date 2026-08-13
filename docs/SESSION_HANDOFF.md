@@ -20,13 +20,15 @@ the architecture docs rather than letting them accumulate here.
 
 ---
 
-**Last updated:** 2026-06-29 (durable sections rotated into
-[`docs/architecture/`](architecture/)). **Prior status (2026-06-09):** merged
-onto the shared `sentinel` board; GATT contract synced with firmware #6
-(descriptive aggregate names + BME280 one-shot sample); phase milestone-epics;
-Phase III/IV redefined. **App code:** still only the stock Xcode template
-(`SentinelApp.swift` / `ContentView.swift` + test stubs) — everything below is
-forward-spec. #33 (Xcode project config) is in progress on its feature branch.
+**Last updated:** 2026-08-13 (#33 Xcode project config **done** — squash-merged
+to `develop`, pre-squash history at tag `33-xcode-config-icon-history`). This
+session: single-size `sensor.fill` app icon; adopted the rolling latest-iOS
+deployment policy (currently 26.4; see #4); reworked the #26 splash spec to a
+`sensor.fill` variable-color pulse (replacing the old outline→fill wipe).
+**Prior status (2026-06-29):** durable sections rotated into
+[`docs/architecture/`](architecture/). **App code:** still only the stock Xcode
+template (`SentinelApp.swift` / `ContentView.swift` + test stubs) — everything
+below is forward-spec.
 
 ---
 
@@ -117,7 +119,8 @@ start today:
 ## Next session — recommended starting point
 
 **#26 SplashView** is the cleanest first implementation: dependency-free, self-
-contained, satisfying. The SF-symbol `sensor` → `sensor.fill` vertical fill-wipe
-is fully specced in the issue body. After that, **#7** (navigation skeleton) and
-**#8** (BluetoothManager scaffolding) unblock everything else. (#33 Xcode project
-config is currently in progress on its own branch.)
+contained, satisfying. The mark is `sensor.fill` (same glyph as the app icon)
+animated with `.symbolEffect(.variableColor.iterative.dimInactiveLayers.nonReversing)`
+— a "ping" pulse; fully specced in the issue body. After that, **#7** (navigation
+skeleton) and **#8** (BluetoothManager scaffolding) unblock everything else.
+(#33 Xcode project config is done and on `develop`.)

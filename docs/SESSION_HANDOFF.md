@@ -60,9 +60,11 @@ snapshot capture, OTA DFU via MCUBoot. Companion to
   integration** (S3 OTA-DFU file storage + event-log / snapshot upload, partitioned
   by device serial number; issue #32 — spec TBD). Each phase has a `Main client
   application: Phase N` milestone-epic (#3 / #30 / #28 / #31) under root epic #29.
-- **Targets:** iOS 17+ (Phase I/II); iPadOS 17+ & macOS 14+ (Phase III); AWS (Phase IV)
-- **Toolchain:** Xcode 15+, Swift 5.9+, SwiftUI, `@Observable` (not the older
-  `ObservableObject`/`@Published`)
+- **Targets:** latest iOS major at release (rolling deployment target — currently
+  **iOS 26.4**; see #4); iPadOS & macOS latest (Phase III); AWS (Phase IV). Policy:
+  personal client, no legacy-user base → track the newest OS, no `@available` gating.
+- **Toolchain:** latest Xcode + Swift at release (currently Xcode 26+, Swift 6+),
+  SwiftUI, `@Observable` (not the older `ObservableObject`/`@Published`)
 - **BLE:** [`AsyncBluetooth`](https://github.com/manolofdez/AsyncBluetooth) SPM
   package — async/await + AsyncStream wrappers over CoreBluetooth. NOT raw
   CoreBluetooth, NOT a hand-rolled wrapper.

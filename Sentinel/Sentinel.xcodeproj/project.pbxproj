@@ -6,6 +6,13 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		A6503B5D2FF20C660008FEFD /* AsyncBluetooth in Frameworks */ = {isa = PBXBuildFile; productRef = A6503B5C2FF20C660008FEFD /* AsyncBluetooth */; };
+		A6503B652FF20EB80008FEFD /* AsyncBluetooth in Frameworks */ = {isa = PBXBuildFile; productRef = A6503B642FF20EB80008FEFD /* AsyncBluetooth */; };
+		A6503B692FF20F310008FEFD /* AsyncBluetooth in Frameworks */ = {isa = PBXBuildFile; productRef = A6503B682FF20F310008FEFD /* AsyncBluetooth */; };
+		A6D32AA62FF217AA0058FE51 /* run-swiftlint.sh in Resources */ = {isa = PBXBuildFile; fileRef = A6D32AA42FF217AA0058FE51 /* run-swiftlint.sh */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXContainerItemProxy section */
 		A6E0898D2FB25D0200AB1EB6 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
@@ -24,6 +31,7 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		A6D32AA42FF217AA0058FE51 /* run-swiftlint.sh */ = {isa = PBXFileReference; lastKnownFileType = text.script.sh; path = "run-swiftlint.sh"; sourceTree = "<group>"; };
 		A6E0897F2FB25D0000AB1EB6 /* Sentinel.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Sentinel.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		A6E0898C2FB25D0200AB1EB6 /* SentinelTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = SentinelTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		A6E089962FB25D0200AB1EB6 /* SentinelUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = SentinelUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -52,6 +60,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				A6503B5D2FF20C660008FEFD /* AsyncBluetooth in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -59,6 +68,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				A6503B652FF20EB80008FEFD /* AsyncBluetooth in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -66,18 +76,36 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				A6503B692FF20F310008FEFD /* AsyncBluetooth in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		A6503B632FF20EB80008FEFD /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
+		A6D32AA52FF217AA0058FE51 /* Scripts */ = {
+			isa = PBXGroup;
+			children = (
+				A6D32AA42FF217AA0058FE51 /* run-swiftlint.sh */,
+			);
+			path = Scripts;
+			sourceTree = "<group>";
+		};
 		A6E089762FB25D0000AB1EB6 = {
 			isa = PBXGroup;
 			children = (
+				A6D32AA52FF217AA0058FE51 /* Scripts */,
 				A6E089812FB25D0000AB1EB6 /* Sentinel */,
 				A6E0898F2FB25D0200AB1EB6 /* SentinelTests */,
 				A6E089992FB25D0200AB1EB6 /* SentinelUITests */,
+				A6503B632FF20EB80008FEFD /* Frameworks */,
 				A6E089802FB25D0000AB1EB6 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -102,6 +130,7 @@
 				A6E0897B2FB25D0000AB1EB6 /* Sources */,
 				A6E0897C2FB25D0000AB1EB6 /* Frameworks */,
 				A6E0897D2FB25D0000AB1EB6 /* Resources */,
+				A6D32AA32FF216300058FE51 /* ShellScript */,
 			);
 			buildRules = (
 			);
@@ -112,6 +141,7 @@
 			);
 			name = Sentinel;
 			packageProductDependencies = (
+				A6503B5C2FF20C660008FEFD /* AsyncBluetooth */,
 			);
 			productName = Sentinel;
 			productReference = A6E0897F2FB25D0000AB1EB6 /* Sentinel.app */;
@@ -135,6 +165,7 @@
 			);
 			name = SentinelTests;
 			packageProductDependencies = (
+				A6503B642FF20EB80008FEFD /* AsyncBluetooth */,
 			);
 			productName = SentinelTests;
 			productReference = A6E0898C2FB25D0200AB1EB6 /* SentinelTests.xctest */;
@@ -158,6 +189,7 @@
 			);
 			name = SentinelUITests;
 			packageProductDependencies = (
+				A6503B682FF20F310008FEFD /* AsyncBluetooth */,
 			);
 			productName = SentinelUITests;
 			productReference = A6E089962FB25D0200AB1EB6 /* SentinelUITests.xctest */;
@@ -171,10 +203,11 @@
 			attributes = {
 				BuildIndependentTargetsInParallel = 1;
 				LastSwiftUpdateCheck = 2640;
-				LastUpgradeCheck = 2640;
+				LastUpgradeCheck = 2660;
 				TargetAttributes = {
 					A6E0897E2FB25D0000AB1EB6 = {
 						CreatedOnToolsVersion = 26.4.1;
+						LastSwiftMigration = 2660;
 					};
 					A6E0898B2FB25D0200AB1EB6 = {
 						CreatedOnToolsVersion = 26.4.1;
@@ -195,6 +228,9 @@
 			);
 			mainGroup = A6E089762FB25D0000AB1EB6;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				A6503B5B2FF20C660008FEFD /* XCRemoteSwiftPackageReference "AsyncBluetooth" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = A6E089802FB25D0000AB1EB6 /* Products */;
 			projectDirPath = "";
@@ -212,6 +248,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				A6D32AA62FF217AA0058FE51 /* run-swiftlint.sh in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -230,6 +267,27 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXResourcesBuildPhase section */
+
+/* Begin PBXShellScriptBuildPhase section */
+		A6D32AA32FF216300058FE51 /* ShellScript */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "\"${SRCROOT}/Scripts/run-swiftlint.sh\"\n";
+		};
+/* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		A6E0897B2FB25D0000AB1EB6 /* Sources */ = {
@@ -303,11 +361,12 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
+				DEAD_CODE_STRIPPING = YES;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				DEVELOPMENT_TEAM = SNTZSDZ6TQ;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
-				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				GCC_C_LANGUAGE_STANDARD = gnu17;
 				GCC_DYNAMIC_NO_PIC = NO;
 				GCC_NO_COMMON_BLOCKS = YES;
@@ -326,6 +385,7 @@
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 			};
@@ -365,11 +425,12 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
+				DEAD_CODE_STRIPPING = YES;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				DEVELOPMENT_TEAM = SNTZSDZ6TQ;
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
-				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				GCC_C_LANGUAGE_STANDARD = gnu17;
 				GCC_NO_COMMON_BLOCKS = YES;
 				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
@@ -381,6 +442,7 @@
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_COMPILATION_MODE = wholemodule;
 			};
 			name = Release;
@@ -388,17 +450,37 @@
 		A6E089A12FB25D0200AB1EB6 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				ALLOW_TARGET_PLATFORM_SPECIALIZATION = YES;
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++23";
+				CLANG_ENABLE_MODULES = YES;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
+				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = SNTZSDZ6TQ;
 				ENABLE_APP_SANDBOX = YES;
+				ENABLE_FILE_ACCESS_DOWNLOADS_FOLDER = readwrite;
 				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_INCOMING_NETWORK_CONNECTIONS = NO;
+				ENABLE_OUTGOING_NETWORK_CONNECTIONS = YES;
 				ENABLE_PREVIEWS = YES;
+				ENABLE_RESOURCE_ACCESS_AUDIO_INPUT = NO;
+				ENABLE_RESOURCE_ACCESS_BLUETOOTH = YES;
+				ENABLE_RESOURCE_ACCESS_CALENDARS = NO;
+				ENABLE_RESOURCE_ACCESS_CAMERA = NO;
+				ENABLE_RESOURCE_ACCESS_CONTACTS = NO;
+				ENABLE_RESOURCE_ACCESS_LOCATION = NO;
+				ENABLE_RESOURCE_ACCESS_PRINTING = NO;
+				ENABLE_RESOURCE_ACCESS_USB = NO;
 				ENABLE_USER_SELECTED_FILES = readonly;
+				GCC_C_LANGUAGE_STANDARD = gnu23;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
+				INFOPLIST_KEY_NSAppleEventsUsageDescription = "Sentinel may utilize Apple events when sharing logging information.";
+				INFOPLIST_KEY_NSBluetoothAlwaysUsageDescription = "Sentinel requires permission to use Bluetooth.";
+				INFOPLIST_KEY_NSBluetoothPeripheralUsageDescription = "Sentinel requires Bluetooth to connect to the Sentinel Sensor Board. (SSB)";
+				INFOPLIST_KEY_NSBluetoothWhileInUseUsageDescription = "Sentinel requires Bluetooth to connect to the Sentinel Sensor Board. (SSB)";
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphoneos*]" = YES;
@@ -407,8 +489,8 @@
 				"INFOPLIST_KEY_UILaunchScreen_Generation[sdk=iphonesimulator*]" = YES;
 				"INFOPLIST_KEY_UIStatusBarStyle[sdk=iphoneos*]" = UIStatusBarStyleDefault;
 				"INFOPLIST_KEY_UIStatusBarStyle[sdk=iphonesimulator*]" = UIStatusBarStyleDefault;
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = UIInterfaceOrientationPortrait;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown";
 				IPHONEOS_DEPLOYMENT_TARGET = 26.4;
 				LD_RUNPATH_SEARCH_PATHS = "@executable_path/Frameworks";
 				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "@executable_path/../Frameworks";
@@ -419,12 +501,15 @@
 				REGISTER_APP_GROUPS = YES;
 				SDKROOT = auto;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
-				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx xros xrsimulator";
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx";
+				SUPPORTS_MACCATALYST = NO;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
 				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_OBJC_BRIDGING_HEADER = "Sentinel/Sentinel-Bridging-Header.h";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
-				SWIFT_VERSION = 5.0;
+				SWIFT_VERSION = 6.0;
 				TARGETED_DEVICE_FAMILY = "1,2,7";
 				XROS_DEPLOYMENT_TARGET = 26.4;
 			};
@@ -433,17 +518,37 @@
 		A6E089A22FB25D0200AB1EB6 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				ALLOW_TARGET_PLATFORM_SPECIALIZATION = YES;
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++23";
+				CLANG_ENABLE_MODULES = YES;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
+				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = SNTZSDZ6TQ;
 				ENABLE_APP_SANDBOX = YES;
+				ENABLE_FILE_ACCESS_DOWNLOADS_FOLDER = readwrite;
 				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_INCOMING_NETWORK_CONNECTIONS = NO;
+				ENABLE_OUTGOING_NETWORK_CONNECTIONS = YES;
 				ENABLE_PREVIEWS = YES;
+				ENABLE_RESOURCE_ACCESS_AUDIO_INPUT = NO;
+				ENABLE_RESOURCE_ACCESS_BLUETOOTH = YES;
+				ENABLE_RESOURCE_ACCESS_CALENDARS = NO;
+				ENABLE_RESOURCE_ACCESS_CAMERA = NO;
+				ENABLE_RESOURCE_ACCESS_CONTACTS = NO;
+				ENABLE_RESOURCE_ACCESS_LOCATION = NO;
+				ENABLE_RESOURCE_ACCESS_PRINTING = NO;
+				ENABLE_RESOURCE_ACCESS_USB = NO;
 				ENABLE_USER_SELECTED_FILES = readonly;
+				GCC_C_LANGUAGE_STANDARD = gnu23;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
+				INFOPLIST_KEY_NSAppleEventsUsageDescription = "Sentinel may utilize Apple events when sharing logging information.";
+				INFOPLIST_KEY_NSBluetoothAlwaysUsageDescription = "Sentinel requires permission to use Bluetooth.";
+				INFOPLIST_KEY_NSBluetoothPeripheralUsageDescription = "Sentinel requires Bluetooth to connect to the Sentinel Sensor Board. (SSB)";
+				INFOPLIST_KEY_NSBluetoothWhileInUseUsageDescription = "Sentinel requires Bluetooth to connect to the Sentinel Sensor Board. (SSB)";
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphoneos*]" = YES;
@@ -452,8 +557,8 @@
 				"INFOPLIST_KEY_UILaunchScreen_Generation[sdk=iphonesimulator*]" = YES;
 				"INFOPLIST_KEY_UIStatusBarStyle[sdk=iphoneos*]" = UIStatusBarStyleDefault;
 				"INFOPLIST_KEY_UIStatusBarStyle[sdk=iphonesimulator*]" = UIStatusBarStyleDefault;
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = UIInterfaceOrientationPortrait;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown";
 				IPHONEOS_DEPLOYMENT_TARGET = 26.4;
 				LD_RUNPATH_SEARCH_PATHS = "@executable_path/Frameworks";
 				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "@executable_path/../Frameworks";
@@ -464,12 +569,14 @@
 				REGISTER_APP_GROUPS = YES;
 				SDKROOT = auto;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
-				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx xros xrsimulator";
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx";
+				SUPPORTS_MACCATALYST = NO;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
 				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_OBJC_BRIDGING_HEADER = "Sentinel/Sentinel-Bridging-Header.h";
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
-				SWIFT_VERSION = 5.0;
+				SWIFT_VERSION = 6.0;
 				TARGETED_DEVICE_FAMILY = "1,2,7";
 				XROS_DEPLOYMENT_TARGET = 26.4;
 			};
@@ -481,6 +588,7 @@
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
+				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = SNTZSDZ6TQ;
 				GENERATE_INFOPLIST_FILE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 26.4;
@@ -507,6 +615,7 @@
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
+				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = SNTZSDZ6TQ;
 				GENERATE_INFOPLIST_FILE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 26.4;
@@ -532,6 +641,7 @@
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
+				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = SNTZSDZ6TQ;
 				GENERATE_INFOPLIST_FILE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 26.4;
@@ -557,6 +667,7 @@
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
+				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = SNTZSDZ6TQ;
 				GENERATE_INFOPLIST_FILE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 26.4;
@@ -617,6 +728,35 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		A6503B5B2FF20C660008FEFD /* XCRemoteSwiftPackageReference "AsyncBluetooth" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/manolofdez/AsyncBluetooth";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 6.2.2;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		A6503B5C2FF20C660008FEFD /* AsyncBluetooth */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A6503B5B2FF20C660008FEFD /* XCRemoteSwiftPackageReference "AsyncBluetooth" */;
+			productName = AsyncBluetooth;
+		};
+		A6503B642FF20EB80008FEFD /* AsyncBluetooth */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A6503B5B2FF20C660008FEFD /* XCRemoteSwiftPackageReference "AsyncBluetooth" */;
+			productName = AsyncBluetooth;
+		};
+		A6503B682FF20F310008FEFD /* AsyncBluetooth */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A6503B5B2FF20C660008FEFD /* XCRemoteSwiftPackageReference "AsyncBluetooth" */;
+			productName = AsyncBluetooth;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = A6E089772FB25D0000AB1EB6 /* Project object */;
 }

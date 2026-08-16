@@ -10,7 +10,6 @@
 		A6503B5D2FF20C660008FEFD /* AsyncBluetooth in Frameworks */ = {isa = PBXBuildFile; productRef = A6503B5C2FF20C660008FEFD /* AsyncBluetooth */; };
 		A6503B652FF20EB80008FEFD /* AsyncBluetooth in Frameworks */ = {isa = PBXBuildFile; productRef = A6503B642FF20EB80008FEFD /* AsyncBluetooth */; };
 		A6503B692FF20F310008FEFD /* AsyncBluetooth in Frameworks */ = {isa = PBXBuildFile; productRef = A6503B682FF20F310008FEFD /* AsyncBluetooth */; };
-		A6D32AA62FF217AA0058FE51 /* run-swiftlint.sh in Resources */ = {isa = PBXBuildFile; fileRef = A6D32AA42FF217AA0058FE51 /* run-swiftlint.sh */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -127,10 +126,10 @@
 			isa = PBXNativeTarget;
 			buildConfigurationList = A6E089A02FB25D0200AB1EB6 /* Build configuration list for PBXNativeTarget "Sentinel" */;
 			buildPhases = (
+				A6D32AA32FF216300058FE51 /* ShellScript */,
 				A6E0897B2FB25D0000AB1EB6 /* Sources */,
 				A6E0897C2FB25D0000AB1EB6 /* Frameworks */,
 				A6E0897D2FB25D0000AB1EB6 /* Resources */,
-				A6D32AA32FF216300058FE51 /* ShellScript */,
 			);
 			buildRules = (
 			);
@@ -248,7 +247,6 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				A6D32AA62FF217AA0058FE51 /* run-swiftlint.sh in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -272,6 +270,7 @@
 		A6D32AA32FF216300058FE51 /* ShellScript */ = {
 			isa = PBXShellScriptBuildPhase;
 			alwaysOutOfDate = 1;
+			name = "SwiftFormat + SwiftLint";
 			buildActionMask = 2147483647;
 			files = (
 			);
@@ -285,7 +284,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "\"${SRCROOT}/Scripts/run-swiftlint.sh\"\n";
+			shellScript = "\"${SRCROOT}/Scripts/run-swiftformat.sh\"\n\"${SRCROOT}/Scripts/run-swiftlint.sh\"\n";
 		};
 /* End PBXShellScriptBuildPhase section */
 

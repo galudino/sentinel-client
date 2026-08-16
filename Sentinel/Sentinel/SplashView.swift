@@ -26,8 +26,8 @@ struct SplashView: View {
     @State private var isPulsing = false
     @State private var rootOpacity: Double = 1.0
 
-    private let easeInDuration:  Double = 0.6   // scale + opacity
-    private let pulseDuration:   Double = 1.6   // variable-color pulse visible window
+    private let easeInDuration: Double = 0.6 // scale + opacity
+    private let pulseDuration: Double = 1.6 // variable-color pulse visible window
     private let fadeOutDuration: Double = 0.4
 
     var body: some View {
@@ -68,7 +68,7 @@ struct SplashView: View {
         }
         try? await Task.sleep(for: .seconds(fadeOutDuration))
 
-        isPulsing = false   // stop the effect — no retained animation after completion
+        isPulsing = false // stop the effect — no retained animation after completion
         onComplete()
     }
 }

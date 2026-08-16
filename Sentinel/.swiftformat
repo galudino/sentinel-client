@@ -1,0 +1,22 @@
+# SwiftFormat configuration for Sentinel.
+# Runs (format-fix) before SwiftLint in the build phase; keep rules consistent
+# with .swiftlint.yml so the two tools don't fight.
+
+--swiftversion 6.0
+
+# Layout
+--indent 4
+--maxwidth 120
+--wraparguments before-first
+--wrapparameters before-first
+--wrapcollections before-first
+--closingparen balanced
+
+# Cleanup
+--self remove
+--commas inline
+--trimwhitespace always
+--stripunusedargs closure-only
+
+# Never touch dependencies or build output
+--exclude Pods,Carthage,.build,DerivedData,build

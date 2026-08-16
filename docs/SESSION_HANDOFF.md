@@ -20,15 +20,22 @@ the architecture docs rather than letting them accumulate here.
 
 ---
 
-**Last updated:** 2026-08-13 (#33 Xcode project config **done** — squash-merged
-to `develop`, pre-squash history at tag `33-xcode-config-icon-history`). This
-session: single-size `sensor.fill` app icon; adopted the rolling latest-iOS
-deployment policy (currently 26.4; see #4); reworked the #26 splash spec to a
-`sensor.fill` variable-color pulse (replacing the old outline→fill wipe).
-**Prior status (2026-06-29):** durable sections rotated into
-[`docs/architecture/`](architecture/). **App code:** still only the stock Xcode
-template (`SentinelApp.swift` / `ContentView.swift` + test stubs) — everything
-below is forward-spec.
+**Last updated:** 2026-08-16 (#26 **SplashView done** — squash-merged to
+`develop`, pre-squash history at tag `26-view-splashview-history`). This session:
+built `SplashView` (`sensor.fill` variable-color pulse, gates the root swap in
+`SentinelApp`); set `AccentColor` to brand cyan (#2DE2CD) so splash + icon + tint
+match; fixed the build's lint phase and added **SwiftFormat** (runs format-fix
+**before** SwiftLint, phase moved ahead of compile, and `run-swiftlint.sh` no
+longer ships inside the `.app`). **Prior (2026-08-13):** #33 Xcode config done
+(tag `33-xcode-config-icon-history`) — single-size `sensor.fill` app icon; rolling
+latest-iOS policy (currently 26.4; see #4). **Prior (2026-06-29):** durable
+sections rotated into [`docs/architecture/`](architecture/).
+
+**App code so far:** `SentinelApp` (splash-gated root swap) → `SplashView` (#26,
+done) → falls through to the stock `ContentView` **placeholder** (replaced by
+`RootView` when #7 lands). Build phase runs SwiftFormat → SwiftLint on every
+build (configs: `Sentinel/.swiftformat`, `Sentinel/.swiftlint.yml`; scripts in
+`Sentinel/Scripts/`). Everything below `RootView` is still forward-spec.
 
 ---
 
@@ -118,9 +125,22 @@ start today:
 
 ## Next session — recommended starting point
 
-**#26 SplashView** is the cleanest first implementation: dependency-free, self-
-contained, satisfying. The mark is `sensor.fill` (same glyph as the app icon)
-animated with `.symbolEffect(.variableColor.iterative.dimInactiveLayers.nonReversing)`
-— a "ping" pulse; fully specced in the issue body. After that, **#7** (navigation
-skeleton) and **#8** (BluetoothManager scaffolding) unblock everything else.
-(#33 Xcode project config is done and on `develop`.)
+**#7 (Architecture: SwiftUI navigation + state machine)** is next. It introduces
+`AppRouter` (the `@Observable` state machine) and `RootView`, which **replaces the
+`ContentView` placeholder** that `SplashView` currently falls through to. Concretely:
+`SentinelApp.init()` creates `AppRouter` (+ the other app-wide `@Observable`s as they
+arrive) and injects via `.environment(...)`; `RootView` switches on router state
+(`.scanning` / `.connecting` / `.connected` / `.updatingFirmware`) per the
+navigation model in [`architecture/architecture.md`](architecture/architecture.md).
+Wire `SplashView`'s `onComplete` to reveal `RootView`. No firmware dependency —
+pure SwiftUI structure. After #7, **#8** (BluetoothManager + transport protocol)
+is the BLE foundation (concrete characteristic reads wait on firmware #6 UUIDs / #9).
+
+Done and on `develop`: **#33** (Xcode config, tooling, icon), **#26** (SplashView).
+Follow the git-flow in
+[`architecture/github-infrastructure.md`](architecture/github-infrastructure.md):
+branch off `develop`, tag the pre-squash tip (`NN-slug-history`), squash-merge, delete.
+
+**Env note:** the app targets iOS 26.4, so run/test on an **iOS 26.4+ simulator**
+(e.g. iPhone 17 Pro). Builds won't install on iOS 18 simulators ("requires a newer
+version of iOS"), which manifests as a stale install / generic app icon.

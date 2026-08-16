@@ -9,6 +9,7 @@ export PATH="/opt/homebrew/bin:/usr/local/bin:${PATH}"
 SWIFTLINT_BIN="$(command -v swiftlint || true)"
 
 if [ -n "${SWIFTLINT_BIN}" ]; then
+    echo "SwiftLint: linting sources…"
     "${SWIFTLINT_BIN}" lint \
         --config "${PROJECT_ROOT}/.swiftlint.yml" \
         --working-directory "${PROJECT_ROOT}"

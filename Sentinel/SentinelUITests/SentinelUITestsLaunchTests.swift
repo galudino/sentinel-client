@@ -8,7 +8,6 @@
 import XCTest
 
 final class SentinelUITestsLaunchTests: XCTestCase {
-
     override static var runsForEachTargetApplicationUIConfiguration: Bool {
         true
     }

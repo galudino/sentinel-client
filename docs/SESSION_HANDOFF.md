@@ -20,11 +20,24 @@ the architecture docs rather than letting them accumulate here.
 
 ---
 
-**Last updated:** 2026-08-17 (**#8–#12 all done + closed** — foundational BLE +
-model + first view; each squash-merged to `develop`, pre-squash tips tagged
-`NN-slug-history`). Firmware **#6 / #34 / #36 are CLOSED**, so #9/#10/#11 are no
-longer blocked — this session sourced the real UUIDs + record layouts from the
-firmware repo (no client invention):
+**Last updated:** 2026-08-17 (**#8–#14 all done + closed**, and **`develop` merged
+to `main`** — merge commit `784a292`; not pushed). Foundational BLE + models + the
+scan/connect/tabs flow. Firmware **#6 / #34 / #36 are CLOSED**, so #9/#10/#11 were
+sourced from the firmware repo (no client invention). Highlights beyond #8–#12:
+- **#13 ConnectingView** — presentational (router owns the connect); added
+  `.connectFailed` state + a **15 s timeout** (`withThrowingTimeout`) + cancel /
+  retry / dismiss intents + `BluetoothCentral.cancelConnect`. Phases from the live
+  `ConnectionState`.
+- **#14 MainTabView** — the 5-tab shell (Home/Logs/Snapshots/Device/Settings), each
+  tab stubbed under `Views/Tabs/` (fleshed out by #15–#19); Device badge + Home
+  banner driven by `firmwareUpdateAvailable` (#20 wires the real signal).
+- Added `Sentinel.xctestplan` (wired into the scheme).
+
+**Flow is now real end-to-end:** `PeripheralScanView → ConnectingView → MainTabView`
+works on hardware (connect + discovery are real); tab *contents* are stubs until
+#15–#19. **47→46 unique tests green.**
+
+Earlier this session (#8–#12), sourced from firmware:
 - **#9 GATT contract** — `GATTContract.swift`: real 128-bit UUIDs transcribed from
   firmware `cycfg_gatt_db.h` (one `SentinelServiceUUID` + per-service char enums);
   `PlatformID`/`VendorID`, `FirmwareVersion` (5-byte packed, hand-decoded),
@@ -210,20 +223,26 @@ and `SystemEventRecord` (#11). Foundation status:
 
 ## Next session — recommended starting point
 
-The BLE foundation + first view are done. Good next picks, in rough order:
+The BLE foundation + the scan/connect/tabs flow are done. The tabs are stubs —
+fleshing them out is the bulk of what's left. Good next picks:
 
-- **#23 PairedPeerStore** (recommended, small, no deps) — UserDefaults-backed
-  trusted-peer registry; unblocks the #12 **Trusted devices** section (already
-  stubbed in `PeripheralRow`'s `trusted:` style).
-- **#13 ConnectingView** / **#14 MainTabView** / the tab leaf views — the connected
-  subtree. All the service clients + typed models they need now exist; leaf views
-  take `any <Chip>Service` and preview with the `Mock*Service` types.
-- **#25 DebugOutputStreamView** — merge the two event streams; unblocks the #12
-  Debug button.
-- **#18 DeviceView** — consumes the DIS UUIDs from #9 (DIS reads were deferred there).
+- **#15–#19 tab content** — replace the `Views/Tabs/` stubs with real views:
+  **#15 HomeView** (live BME280 via `peer.bme280` + charts), **#16 LogsView**
+  (`peer.systemEventLog` → `SystemEventRecord` display API), **#17 SnapshotLogging**
+  (`peer.snapshotHistory`/`snapshotStream` → `DeviceSnapshot`), **#18 DeviceView**
+  (`peer.system` + DIS reads from #9; GATT explorer), **#19 SettingsView**. All the
+  service clients + typed models + `Mock*Service` previews already exist.
+- **#23 PairedPeerStore** (small, no deps) — UserDefaults-backed trusted-peer
+  registry; unblocks the #12 **Trusted devices** section (`PeripheralRow` already
+  has the `trusted:` style) and #19's paired-device management.
+- **#25 DebugOutputStreamView** — merge `BluetoothManager.bluetoothEventStream()`
+  + on-device `DebugStreamService`; unblocks the #12 Debug button.
+- **#20 firmware selection** — provides the real `firmwareUpdateAvailable` signal
+  that #14's badge/banner already consume.
 
-Done and on `develop`: **#33**, **#26**, **#7**, **#8**, **#9**, **#10**, **#11**,
-**#12** (this session added #8–#12). Follow the git-flow in
+Done and on `develop` (and merged to `main`): **#33**, **#26**, **#7**, **#8**,
+**#9**, **#10**, **#11**, **#12**, **#13**, **#14** (this session added #8–#14 +
+the test plan, and merged `develop`→`main`). Follow the git-flow in
 [`architecture/github-infrastructure.md`](architecture/github-infrastructure.md):
 branch off `develop`, tag the pre-squash tip (`NN-slug-history`), squash-merge, delete.
 

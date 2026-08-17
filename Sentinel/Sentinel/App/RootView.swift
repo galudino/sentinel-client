@@ -26,6 +26,7 @@ import SwiftUI
 /// only while connected" is enforced by the view tree, not by optionals.
 struct RootView: View {
     @Environment(AppRouter.self) private var router
+    @Environment(PairedPeerStore.self) private var pairedPeerStore
 
     var body: some View {
         ZStack {
@@ -44,6 +45,11 @@ struct RootView: View {
                 MainTabView()
                     .environment(peer) // ConnectedPeer visible only here
                     .transition(.opacity)
+                    // Register-on-connect: a successful connection trusts the peer
+                    // so it surfaces in PeripheralScanView (#12) + SettingsView (#19).
+                    .task(id: peer.id) {
+                        pairedPeerStore.register(id: peer.id, name: peer.name)
+                    }
 
             case let .updatingFirmware(peer, image):
                 FirmwareUpdateView(image: image)
@@ -58,4 +64,5 @@ struct RootView: View {
 #Preview {
     RootView()
         .environment(AppRouter(bluetoothManager: BluetoothManager()))
+        .environment(PairedPeerStore.preview(peers: []))
 }

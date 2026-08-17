@@ -73,9 +73,11 @@ enum MainTab: String, CaseIterable, Identifiable {
 @MainActor
 @Observable
 final class AppRouter {
-    /// The BLE central (#8). The router owns the *intent* to connect; the manager
-    /// performs it and returns a ``ConnectedPeer``.
-    let bluetoothManager: BluetoothManager
+    /// The BLE central (#8). The router owns the *intent* to connect; the central
+    /// performs it and returns a ``ConnectedPeer``. Held behind the
+    /// ``BluetoothCentral`` protocol so the state machine stays free of any
+    /// `AsyncBluetooth` type and is unit-testable against a mock central.
+    let bluetoothManager: any BluetoothCentral
 
     /// The current root state. Externally read-only — mutated only through the
     /// intent methods below.
@@ -86,7 +88,7 @@ final class AppRouter {
     /// app launch (a new `AppRouter`).
     var selectedTab: MainTab = .home
 
-    init(bluetoothManager: BluetoothManager) {
+    init(bluetoothManager: any BluetoothCentral) {
         self.bluetoothManager = bluetoothManager
     }
 

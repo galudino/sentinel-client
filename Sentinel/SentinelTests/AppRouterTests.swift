@@ -17,12 +17,12 @@ import Testing
 @MainActor
 struct AppRouterTests {
     /// Drive a fresh router through `beginConnect` and wait for the async connect
-    /// to land in `.connected`. The seed `BluetoothManager.connect` completes
+    /// to land in `.connected`. `MockBluetoothCentral.connect` completes
     /// immediately, so this yields at most a couple of times.
     private func makeConnectedRouter(
         name: String = "Test"
     ) async -> (router: AppRouter, peerID: UUID) {
-        let router = AppRouter(bluetoothManager: BluetoothManager())
+        let router = AppRouter(bluetoothManager: MockBluetoothCentral())
         let id = UUID()
         router.beginConnect(peripheralID: id, name: name)
         for _ in 0 ..< 1000 {
@@ -33,13 +33,13 @@ struct AppRouterTests {
     }
 
     @Test func initialStateIsScanning() {
-        let router = AppRouter(bluetoothManager: BluetoothManager())
+        let router = AppRouter(bluetoothManager: MockBluetoothCentral())
         #expect(router.state == .scanning)
         #expect(router.selectedTab == .home)
     }
 
     @Test func beginConnectEntersConnectingSynchronously() {
-        let router = AppRouter(bluetoothManager: BluetoothManager())
+        let router = AppRouter(bluetoothManager: MockBluetoothCentral())
         let id = UUID()
         router.beginConnect(peripheralID: id)
         // The async success hop runs on a scheduled Task, not inline, so the
@@ -64,7 +64,7 @@ struct AppRouterTests {
     }
 
     @Test func connectFailedReturnsToScanning() {
-        let router = AppRouter(bluetoothManager: BluetoothManager())
+        let router = AppRouter(bluetoothManager: MockBluetoothCentral())
         router.beginConnect(peripheralID: UUID())
         #expect({ if case .connecting = router.state { true } else { false } }())
         router.connectFailed()
@@ -78,7 +78,7 @@ struct AppRouterTests {
     }
 
     @Test func disconnectWhileScanningIsNoOp() {
-        let router = AppRouter(bluetoothManager: BluetoothManager())
+        let router = AppRouter(bluetoothManager: MockBluetoothCentral())
         router.didDisconnect()
         #expect(router.state == .scanning)
     }
@@ -96,7 +96,7 @@ struct AppRouterTests {
     }
 
     @Test func startFirmwareUpdateIgnoredWhenNotConnected() {
-        let router = AppRouter(bluetoothManager: BluetoothManager())
+        let router = AppRouter(bluetoothManager: MockBluetoothCentral())
         router.startFirmwareUpdate(FirmwareImage(version: "1.1.0")) // illegal from .scanning
         #expect(router.state == .scanning)
     }

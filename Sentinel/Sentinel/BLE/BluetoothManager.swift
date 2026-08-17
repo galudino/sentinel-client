@@ -187,8 +187,8 @@ final class BluetoothManager: BluetoothCentral, @unchecked Sendable {
     }
 
     private func resolvePeripheral(_ id: UUID) throws -> Peripheral {
-        if let item = discoveredPeripherals.first(where: { $0.id == id }) {
-            return item.peripheral
+        if let item = discoveredPeripherals.first(where: { $0.id == id }), let peripheral = item.peripheral {
+            return peripheral
         }
         if let retrieved = central.retrievePeripherals(withIdentifiers: [id]).first {
             return retrieved
@@ -218,6 +218,20 @@ enum BluetoothManagerError: Error, Equatable {
     /// retained by CoreBluetooth.
     case unknownPeripheral(UUID)
 }
+
+#if DEBUG
+    extension BluetoothManager {
+        /// A manager pre-seeded with synthetic discovered peripherals, for SwiftUI
+        /// previews of `PeripheralScanView` on the simulator (which has no BLE).
+        /// The paired scan view must skip its real scan (see its preview init) or
+        /// this seeded list would be cleared.
+        static func preview(discovered: [PeripheralScanItem]) -> BluetoothManager {
+            let manager = BluetoothManager()
+            manager.discoveredPeripherals = discovered
+            return manager
+        }
+    }
+#endif
 
 // MARK: - Event fan-out
 

@@ -36,7 +36,7 @@ struct RootView: View {
                 }
                 .transition(.opacity)
 
-            case .connecting:
+            case .connecting, .connectFailed:
                 ConnectingView()
                     .transition(.opacity)
 

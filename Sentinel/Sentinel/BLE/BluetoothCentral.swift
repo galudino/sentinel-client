@@ -33,6 +33,10 @@ protocol BluetoothCentral: AnyObject, Sendable {
     /// ``ConnectedPeer``. Throws if no such peripheral is known or the link fails.
     func connect(peripheralID: UUID, name: String?) async throws -> ConnectedPeer
 
+    /// Abort an in-flight connect to the given peripheral (user cancel / timeout),
+    /// tearing down any half-open link. Safe to call even if nothing is pending.
+    func cancelConnect(peripheralID: UUID) async
+
     /// Tear down the active connection and release the peer.
     func disconnect(_ peer: ConnectedPeer) async throws
 }

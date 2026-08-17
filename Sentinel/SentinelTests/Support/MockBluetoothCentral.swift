@@ -18,10 +18,21 @@ final class MockBluetoothCentral: BluetoothCentral, @unchecked Sendable {
     private(set) var connectCount = 0
     private(set) var disconnectedPeerIDs: [UUID] = []
 
+    /// When set, `connect` waits this long before returning — lets tests drive the
+    /// cancel/timeout paths deterministically.
+    var connectDelay: Duration?
+
+    private(set) var cancelledPeerIDs: [UUID] = []
+
     func connect(peripheralID: UUID, name: String?) async throws -> ConnectedPeer {
         connectCount += 1
+        if let connectDelay { try await Task.sleep(for: connectDelay) }
         if shouldFailConnect { throw MockCentralError.connectFailed }
         return ConnectedPeer(id: peripheralID, name: name)
+    }
+
+    func cancelConnect(peripheralID: UUID) async {
+        cancelledPeerIDs.append(peripheralID)
     }
 
     func disconnect(_ peer: ConnectedPeer) async throws {

@@ -63,11 +63,74 @@ struct AppRouterTests {
         #expect(router.state == before)
     }
 
-    @Test func connectFailedReturnsToScanning() {
-        let router = AppRouter(bluetoothManager: MockBluetoothCentral())
-        router.beginConnect(peripheralID: UUID())
+    @Test func cancelConnectAbortsBLEAndReturnsToScanning() async {
+        let central = MockBluetoothCentral()
+        central.connectDelay = .seconds(5) // keep the connect in flight
+        let router = AppRouter(bluetoothManager: central)
+        let id = UUID()
+        router.beginConnect(peripheralID: id)
         #expect({ if case .connecting = router.state { true } else { false } }())
-        router.connectFailed()
+
+        router.cancelConnect()
+        #expect(router.state == .scanning) // returns immediately
+        // The BLE abort is fired on a detached task; give it a turn to land.
+        for _ in 0 ..< 1000 where central.cancelledPeerIDs.isEmpty {
+            await Task.yield()
+        }
+        #expect(central.cancelledPeerIDs == [id])
+    }
+
+    @Test func failedConnectEntersConnectFailedWithMessage() async {
+        let central = MockBluetoothCentral()
+        central.shouldFailConnect = true
+        let router = AppRouter(bluetoothManager: central)
+        let id = UUID()
+        router.beginConnect(peripheralID: id)
+        for _ in 0 ..< 1000 {
+            if case .connectFailed = router.state { break }
+            await Task.yield()
+        }
+        guard case let .connectFailed(failedID, message) = router.state else {
+            Issue.record("expected .connectFailed, got \(router.state)")
+            return
+        }
+        #expect(failedID == id)
+        #expect(!message.isEmpty)
+    }
+
+    @Test func retryConnectFromFailedReconnects() async {
+        let central = MockBluetoothCentral()
+        central.shouldFailConnect = true
+        let router = AppRouter(bluetoothManager: central)
+        let id = UUID()
+        router.beginConnect(peripheralID: id)
+        for _ in 0 ..< 1000 {
+            if case .connectFailed = router.state { break }
+            await Task.yield()
+        }
+        central.shouldFailConnect = false
+        router.retryConnect()
+        for _ in 0 ..< 1000 {
+            if case .connected = router.state { break }
+            await Task.yield()
+        }
+        guard case let .connected(peer) = router.state else {
+            Issue.record("expected .connected after retry, got \(router.state)")
+            return
+        }
+        #expect(peer.id == id) // retried the same device
+    }
+
+    @Test func dismissConnectErrorReturnsToScanning() async {
+        let central = MockBluetoothCentral()
+        central.shouldFailConnect = true
+        let router = AppRouter(bluetoothManager: central)
+        router.beginConnect(peripheralID: UUID())
+        for _ in 0 ..< 1000 {
+            if case .connectFailed = router.state { break }
+            await Task.yield()
+        }
+        router.dismissConnectError()
         #expect(router.state == .scanning)
     }
 

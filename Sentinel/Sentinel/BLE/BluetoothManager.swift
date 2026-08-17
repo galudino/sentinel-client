@@ -164,6 +164,16 @@ final class BluetoothManager: BluetoothCentral, @unchecked Sendable {
         return peer
     }
 
+    /// Abort an in-flight connect (user cancel / timeout, #13): cancel the pending
+    /// CoreBluetooth connection for the peripheral and drop back to disconnected.
+    func cancelConnect(peripheralID: UUID) async {
+        emit(.connection, "Connect cancelled", peripheralID: peripheralID)
+        if let peripheral = try? resolvePeripheral(peripheralID) {
+            try? await central.cancelPeripheralConnection(peripheral)
+        }
+        connectionState = .disconnected
+    }
+
     /// Tear down the active connection and release the peer. Does not retain the
     /// peripheral — it is re-resolved from CoreBluetooth's retained set by id.
     func disconnect(_ peer: ConnectedPeer) async throws {

@@ -39,12 +39,27 @@ sourced from the firmware repo (no client invention). Highlights beyond #8–#12
   `AppPreferences`, About. Added **`AppRouter.disconnect()`** (user-initiated BLE
   teardown, vs the involuntary-drop `didDisconnect()`).
 - Added `Sentinel.xctestplan` (wired into the scheme).
+- **Follow-ups (post-#19):** new tab icon set; **register-on-connect** wired
+  (`RootView` `.task(id: peer.id)` → `PairedPeerStore.register`, so trusted devices
+  now populate); **`PeripheralScanView` preview scenarios** — see the convention
+  below.
 
-> **Loose end (small):** nothing calls `PairedPeerStore.register(id:name:)` on a
-> successful connect yet, so the Settings *Paired Devices* list is empty at runtime.
-> Wire it where the router reaches `.connected` (inject the store into the router,
-> or register from `RootView`'s `.connected` branch) — then #12's Trusted section +
-> #19's list populate.
+### Preview convention (do this for every view going forward)
+
+The simulator has **no BLE**, so live-data views render empty/unavailable on the
+preview canvas. Demonstrate real scenarios anyway via a **`#if DEBUG` preview
+seam** (pattern borrowed from `voomair-client-ios`'s `#if targetEnvironment(simulator)`
+swap, but scoped per-preview so the real path still previews):
+- Give types that wrap a non-constructible SDK object a `#if DEBUG` synthetic init
+  (e.g. `PeripheralScanItem(previewName:…)` — `peripheral` is now optional).
+- Give the owning `@Observable` a `#if DEBUG static func preview(…)` that seeds
+  its state (e.g. `BluetoothManager.preview(discovered:)`).
+- Give the view a `#if DEBUG init(preview…:)` that seeds `@State` and sets an
+  `isPreview` flag so `.task`/`.onChange` **skip real hardware calls**.
+- Provide **multiple named `#Preview`s** covering the meaningful states (empty, one,
+  many, error). `PeripheralScanView` is the reference: Bluetooth-unavailable /
+  no-devices / one Sentinel / mixed. **#15 HomeView etc. should follow this** using
+  the `Mock*Service` types (already exist) for live/empty/streaming states.
 
 **Flow is now real end-to-end:** `PeripheralScanView → ConnectingView → MainTabView`
 works on hardware (connect + discovery are real); tab *contents* are stubs until
@@ -236,25 +251,33 @@ and `SystemEventRecord` (#11). Foundation status:
 
 ## Next session — recommended starting point
 
-The BLE foundation + the scan/connect/tabs flow are done. The tabs are stubs —
-fleshing them out is the bulk of what's left. Good next picks:
+**Start here: #15 HomeView** (the flagship tab — live sensor data). Everything it
+needs exists:
+- `peer.bme280` (`BME280Service`) → `readAmbientSample()` / `ambientSampleNotifications()`
+  → `BME280Sample` (0.01 °C / 0.01 % / Pa, with `temperatureCelsius` etc.). Enable
+  the stream with `setNotifying(true)`.
+- Apply the user's unit prefs via `@Environment(AppPreferences.self)`
+  (`temperatureUnit.convert(celsius:)`, `pressureUnit.convert(hectopascals:)`).
+- Charts: `import Charts` (Swift Charts); the current `HomeView` stub already has the
+  firmware-update banner + `chart.xyaxis.line`→`sensor.fill` placeholder to replace.
+- **Previews are mandatory** (see the Preview convention above): inject
+  `MockBME280Service` for live/steady/empty states — `HomeView` should take
+  `any BME280Service` in its init so a leaf preview needs no `ConnectedPeer`.
 
-- **Remaining tab content** — replace the `Views/Tabs/` stubs with real views:
-  **#15 HomeView** (live BME280 via `peer.bme280` + charts), **#16 LogsView**
-  (`peer.systemEventLog` → `SystemEventRecord` display API), **#17 SnapshotLogging**
-  (`peer.snapshotHistory`/`snapshotStream` → `DeviceSnapshot`), **#18 DeviceView**
-  (`peer.system` + DIS reads from #9; GATT explorer). (#19 SettingsView is done.)
-  All the service clients + typed models + `Mock*Service` previews already exist.
-- **Register-on-connect hook** (small) — wire `PairedPeerStore.register` on
-  `.connected` so #12's Trusted section + #19's Paired Devices list populate.
+Then the rest of the tab content, same pattern:
+- **#16 LogsView** (`peer.systemEventLog` → `SystemEventRecord` display API),
+  **#17 SnapshotLoggingView** (`peer.snapshotHistory`/`snapshotStream` →
+  `DeviceSnapshot`), **#18 DeviceView** (`peer.system` + DIS reads from #9; GATT
+  explorer). All have `Mock*Service` types for previews.
 - **#25 DebugOutputStreamView** — merge `BluetoothManager.bluetoothEventStream()`
   + on-device `DebugStreamService`; unblocks the #12 Debug button.
 - **#20 firmware selection** — provides the real `firmwareUpdateAvailable` signal
   that #14's badge/banner already consume.
 
 Done and on `develop` (and merged to `main`): **#33**, **#26**, **#7**, **#8**,
-**#9**, **#10**, **#11**, **#12**, **#13**, **#14** (this session added #8–#14 +
-the test plan, and merged `develop`→`main`). Follow the git-flow in
+**#9**, **#10**, **#11**, **#12**, **#13**, **#14**, **#19**, **#23** (this session
+added #8–#14, #19, #23 + the test plan + post-#19 follow-ups, and merged
+`develop`→`main`). Follow the git-flow in
 [`architecture/github-infrastructure.md`](architecture/github-infrastructure.md):
 branch off `develop`, tag the pre-squash tip (`NN-slug-history`), squash-merge, delete.
 

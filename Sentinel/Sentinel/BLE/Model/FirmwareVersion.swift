@@ -26,6 +26,21 @@ struct FirmwareVersion: Equatable, Sendable, CustomStringConvertible {
     var shortVersion: String { "\(major).\(minor).\(patch)" }
 }
 
+extension FirmwareVersion {
+    /// Decode the **4-byte** `firmware_version_compact` used inside event-log
+    /// records (firmware `sentinel_system_event.hpp`): major/minor/patch + build's
+    /// **low 8 bits only** (the wire drops the high byte here). Reads at `offset`
+    /// within `data`.
+    nonisolated static func compact(_ data: Data, at offset: Int) -> FirmwareVersion {
+        FirmwareVersion(
+            major: data.u8(at: offset),
+            minor: data.u8(at: offset + 1),
+            patch: data.u8(at: offset + 2),
+            build: UInt16(data.u8(at: offset + 3))
+        )
+    }
+}
+
 extension FirmwareVersion: nonisolated PeripheralDataConvertible {
     nonisolated static func fromData(_ data: Data) -> Self? {
         let bytes = [UInt8](data)

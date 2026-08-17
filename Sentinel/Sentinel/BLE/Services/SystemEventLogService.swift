@@ -14,13 +14,14 @@ import Foundation
 /// (SYSTEM_EVENT_LOG); the service is named **SystemEventLog** to match the
 /// contract 1:1 (not the shorter "EventLog" the #8 scaffold used).
 ///
-/// Phase I (#9) walks the store as raw 36-byte record blobs via ``PagedStore``;
-/// typed decoding into `SystemEventRecord` is layered on by decoder issue #11.
+/// Walks the store via ``PagedStore`` and decodes each 36-byte record with the
+/// ``SystemEventRecord`` decoder (#11).
 protocol SystemEventLogService {
     /// Number of event records currently retained on device.
     func readRecordCount() async throws -> UInt32
-    /// Walk the whole store, one 36-byte record per element (decoded by #11).
-    func readAllRawRecords() async throws -> [Data]
+    /// Walk + decode the whole store (short records are dropped; unknown event
+    /// types decode to `.unknown`).
+    func readAllRecords() async throws -> [SystemEventRecord]
     /// Erase the on-device store.
     func clearStore() async throws
 }
@@ -45,12 +46,13 @@ struct SystemEventLogServiceClient<Transport: BluetoothPeripheralTransport>: Sys
         try await transport.read(characteristic: chars.recordCount, ofService: chars.service) ?? 0
     }
 
-    func readAllRawRecords() async throws -> [Data] {
-        try await PagedStore.readAllRawRecords(
+    func readAllRecords() async throws -> [SystemEventRecord] {
+        let raw = try await PagedStore.readAllRawRecords(
             transport: transport,
             characteristics: chars,
             recordSize: Self.recordSize
         )
+        return raw.compactMap(SystemEventRecord.decode)
     }
 
     func clearStore() async throws {
@@ -64,9 +66,18 @@ struct SystemEventLogServiceClient<Transport: BluetoothPeripheralTransport>: Sys
 }
 
 struct MockSystemEventLogService: SystemEventLogService {
-    var records: [Data] = [Data(repeating: 0x01, count: 36)]
+    var records: [SystemEventRecord] = [
+        .bootLifecycle(
+            SystemEventRecordHeader(unixTimestamp: 1_760_000_000, eventTypeRaw: SystemEvent.bootComplete.rawValue),
+            BootLifecycleBody(
+                firmwareVersion: FirmwareVersion(major: 1, minor: 0, patch: 0, build: 16),
+                bootCount: 7,
+                uptimeAtEvent: 0
+            )
+        )
+    ]
 
     func readRecordCount() async throws -> UInt32 { UInt32(records.count) }
-    func readAllRawRecords() async throws -> [Data] { records }
+    func readAllRecords() async throws -> [SystemEventRecord] { records }
     func clearStore() async throws {}
 }

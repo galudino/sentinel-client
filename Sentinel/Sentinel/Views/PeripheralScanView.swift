@@ -7,32 +7,60 @@
 
 import SwiftUI
 
-/// Entry screen — the app's "log in". Scans for sentinel peripherals and lets
-/// the user pick one to connect. Picking a peripheral drives the router into
+/// Entry screen — the app's "log in". Scans for sentinel peripherals and lets the
+/// user pick one to connect. Picking a peripheral drives the router into
 /// `.connecting`.
 ///
-/// **Stub for #7.** The real scan list, RSSI, filtering, and the Debug button
-/// (→ `DebugOutputStreamView`, #25) land in **#12**, built on ``BluetoothManager``
-/// (#8). For now this exercises the state machine with a synthetic peripheral.
+/// **Interim scan list for #8.** This is the minimum needed to exercise the real
+/// ``BluetoothManager`` end-to-end (start a scan, list discovered peers, connect a
+/// real one). The polished scan UI — signal bars, filtering, empty/permission
+/// states, and the Debug button (→ `DebugOutputStreamView`, #25) — is **#12**.
 struct PeripheralScanView: View {
     @Environment(AppRouter.self) private var router
+    @Environment(BluetoothManager.self) private var bluetoothManager
+
+    @State private var scanError: String?
 
     var body: some View {
-        ContentUnavailableView {
-            Label("Scan for Devices", systemImage: "sensor.fill")
-        } description: {
-            Text("Discovered sentinel devices will appear here. (#12)")
-        } actions: {
-            Button {
-                // Seed: synthesize a peripheral so the flow is walkable. #12 passes
-                // a real peripheral from the scan list.
-                router.beginConnect(peripheralID: UUID(), name: "Sentinel")
-            } label: {
-                Label("Connect to Sentinel", systemImage: "dot.radiowaves.left.and.right")
+        Group {
+            if bluetoothManager.discoveredPeripherals.isEmpty {
+                ContentUnavailableView {
+                    Label("Scanning for Devices", systemImage: "sensor.fill")
+                } description: {
+                    Text(scanError ?? "Discovered sentinel devices will appear here. (polished list: #12)")
+                } actions: {
+                    if scanError != nil {
+                        Button("Retry") { startScan() }
+                            .buttonStyle(.borderedProminent)
+                    } else {
+                        ProgressView()
+                    }
+                }
+            } else {
+                List(bluetoothManager.discoveredPeripherals) { item in
+                    Button {
+                        router.beginConnect(peripheralID: item.id, name: item.name)
+                    } label: {
+                        LabeledContent(item.name ?? "Unnamed device") {
+                            Text("\(item.rssi) dBm").monospacedDigit()
+                        }
+                    }
+                }
             }
-            .buttonStyle(.borderedProminent)
         }
         .navigationTitle("Sentinel")
+        .task { startScan() }
+    }
+
+    private func startScan() {
+        scanError = nil
+        Task {
+            do {
+                try await bluetoothManager.scanForPeripherals()
+            } catch {
+                scanError = "Bluetooth unavailable: \(error.localizedDescription)"
+            }
+        }
     }
 }
 
@@ -41,4 +69,5 @@ struct PeripheralScanView: View {
         PeripheralScanView()
     }
     .environment(AppRouter(bluetoothManager: BluetoothManager()))
+    .environment(BluetoothManager())
 }

@@ -20,9 +20,47 @@ the architecture docs rather than letting them accumulate here.
 
 ---
 
-**Last updated:** 2026-08-16 (#7 **navigation state machine done** —
+**Last updated:** 2026-08-16 (#8 **BLE layer done** — branch
+`8-ble-central-connectedpeer` off `develop`). This session replaced the #7 seeds
+with the real BLE layer on `AsyncBluetooth` 6.2.2:
+- **`BluetoothManager`** (central): `waitUntilReady` → `scanForPeripherals` (filters
+  by the known service UUIDs, 0.5 s advertisement throttle) driving
+  `discoveredPeripherals: [PeripheralScanItem]`; `connect(peripheralID:)` resolves
+  the id → `Peripheral` (scan list, then CoreBluetooth's retained set), connects,
+  discovers services, returns a `ConnectedPeer`; `disconnect`; `bluetoothEventStream()`
+  (fan-out of `BluetoothLogEvent`s for #25). **Holds no `connectedPeripheral`.**
+- **`ConnectedPeer`** (active connection): owns the `Peripheral`, conforms to
+  **`BluetoothPeripheralTransport`** (read/write/setNotify/notifications — the last
+  bridges AsyncBluetooth's Combine `characteristicValueUpdatedPublisher` → an
+  `AsyncStream`), holds live `rssi`/`negotiatedMTU`, and vends the 8 service clients.
+  Detached `init(id:name:)` retained for previews/tests (transport throws `.detached`).
+- **Transport + service layers:** `BluetoothPeripheralTransport` (+ `MockBluetoothTransport`);
+  all 8 Phase I service trios — `BME280`/`DS3231`/`System`/`EventLog`/`SnapshotStream`/
+  `SnapshotHistory`/`OTA`/`DebugStream` — each `<Name>Service` protocol +
+  `<Name>ServiceClient<Transport>` + `Mock<Name>Service`. **`SystemService` is wired
+  end-to-end** (the reference trio).
+- **`PeripheralDataConvertible`** fixed-width conformances (`UInt8/16/32/64`,
+  `Int8/16/32/64`; all `@retroactive nonisolated`) + a `TriviallyCopyable` marker for
+  #10/#11's packed structs; `Peripheral+Hashable` (`@retroactive`); placeholder
+  `ServiceUUIDs` (the `5E271E10…` base — **finalized in #9** vs firmware #6).
+
+**Two deliberate deviations from the issue text, for testability (a locked
+convention):** (1) `AppRouter.beginConnect(peripheralID:)` was **kept** (not rewired
+to take a `Peripheral`) — the manager resolves the id internally, so the state
+machine stays free of any AsyncBluetooth type; (2) `AppRouter` now holds
+**`any BluetoothCentral`** (tiny connect/disconnect protocol; `BluetoothManager`
+conforms) so `AppRouterTests` inject a `MockBluetoothCentral` (real BLE can't reach
+`.connected` in a unit test). `PeripheralScanView` got a lean interim real scan+list
+(polished UI still #12). **Concurrency note:** the target builds with
+`-default-isolation=MainActor`; the transport/central types are `nonisolated` +
+`@unchecked Sendable` (Phase I concession, #24), and `notifications`/`read`/`write`
+are `<T: … & Sendable>`. Tests: `SystemServiceClientTests` + `BluetoothTransportTests`
+(fixed-width decode, setNotify, notification bridge, detached-throws) + the existing
+`AppRouterTests` (now on the mock central).
+
+**Prior (2026-08-16):** #7 **navigation state machine done** —
 squash-merged to `develop`, pre-squash history at tag
-`7-navigation-state-machine-history`). This session: built `AppState` +
+`7-navigation-state-machine-history`. Built `AppState` +
 `@MainActor @Observable AppRouter` (four states: `.scanning` / `.connecting` /
 `.connected` / `.updatingFirmware`; guarded intents, views never mutate `state`)
 and `RootView` (the state switch, **no** outer `NavigationStack` — each branch
@@ -45,10 +83,12 @@ durable sections rotated into [`docs/architecture/`](architecture/).
 **App code so far:** `SentinelApp` (splash-gated root swap; creates
 `BluetoothManager` + `AppRouter` in `init()`, injects via `.environment`) →
 `SplashView` (#26) → `RootView` (#7) switching on `AppRouter.state`. `RootView`'s
-four branches render `PeripheralScanView` / `ConnectingView` / `MainTabView` /
-`FirmwareUpdateView` — all **stubs** pending #12/#13/#14/#21. The BLE layer
-(`BluetoothManager`, `ConnectedPeer`) and `FirmwareImage` are **seeds** awaiting
-#8/#20/#21. Build phase runs SwiftFormat → SwiftLint on every build (configs:
+four branches render `PeripheralScanView` (lean interim real scan+list; polished
+UI #12) / `ConnectingView` / `MainTabView` / `FirmwareUpdateView` — the last three
+still **stubs** pending #13/#14/#21. The **BLE layer is now real** (#8):
+`BluetoothManager` + `ConnectedPeer` + `BluetoothPeripheralTransport` + the 8
+service trios under `Sentinel/Sentinel/BLE/`. `FirmwareImage` remains a **seed**
+awaiting #20/#21. Build phase runs SwiftFormat → SwiftLint on every build (configs:
 `Sentinel/.swiftformat`, `Sentinel/.swiftlint.yml`; scripts in
 `Sentinel/Scripts/`). Everything inside the stubs is still forward-spec.
 
@@ -111,12 +151,16 @@ service + characteristic UUIDs.** Until then, the client-side UUID enums (#9)
 hold `"TBD"` placeholders. Work that is NOT blocked on firmware UUIDs and can
 start today:
 
-- **#26 SplashView** — fully dependency-free; good first implementation.
-- **#7 AppRouter / navigation state machine** — pure SwiftUI structure.
-- **#8 BluetoothManager + transport protocol** — scaffolding can land; the
-  concrete characteristic reads wait on #9 UUIDs.
+- **#26 SplashView** — done (2026-08-16).
+- **#7 AppRouter / navigation state machine** — done (2026-08-16).
+- **#8 BluetoothManager + transport protocol** — **done (2026-08-16)**; concrete
+  characteristic reads still use the placeholder `ServiceUUIDs` until #9 assigns
+  the real values against firmware #6.
 - **#10 / #11 decoders** — can be written + unit-tested against synthetic bytes
-  before real UUIDs exist (the byte layout is known from firmware #34 / #36).
+  before real UUIDs exist (the byte layout is known from firmware #34 / #36);
+  conform the packed structs to the new `TriviallyCopyable` marker (#8).
+- **#12 PeripheralScanView** — the real scan UI can now be built on the #8
+  `BluetoothManager` (an interim scan+list already exists to replace).
 - **#23 PairedPeerStore** — UserDefaults-backed; no firmware dependency.
 
 > Firmware-side status: lane-2 live snapshot stream (firmware #46) is now built;
@@ -140,22 +184,27 @@ start today:
 
 ## Next session — recommended starting point
 
-**#8 (BLE: AsyncBluetooth central + ConnectedPeer + service clients)** is next —
-the BLE foundation. #7 landed **seeds** of `BluetoothManager`, `ConnectedPeer`,
-and `FirmwareImage` (marked "expanded in #8"); #8 replaces them with the real
-types on `AsyncBluetooth` 6.2.2 (already an SPM dep): scanning + discovered list,
-`connect()` doing real service/characteristic discovery and returning a
-`ConnectedPeer` that owns the `Peripheral` and conforms to
-`BluetoothPeripheralTransport`, MTU/RSSI, the two-layer service protocols, and
-the BLE event stream (#25). Keep the router's public surface intact
-(`beginConnect` currently takes a `UUID` + name — rewire it to take a real
-`Peripheral` from the scan list). Concrete characteristic reads still wait on the
-firmware GATT contract (firmware #6) → client UUID enums (#9). Mock-transport +
-mock-service layering per [`architecture/architecture.md`](architecture/architecture.md).
+Two self-contained options, both **unblocked** by #8 and neither needing real
+firmware UUIDs:
+
+- **#10 / #11 decoders** (recommended) — write the packed wire structs
+  (`DeviceSnapshot`, `SystemEventRecordRaw`, `FirmwareVersion`) conforming to the
+  `TriviallyCopyable` marker (#8), decode from synthetic bytes, unit-test against
+  the known firmware layouts (firmware #34 / #36). Fully off-device; feeds the
+  service layer (`SnapshotStream`/`SnapshotHistory`/`EventLog` currently move raw
+  `Data`).
+- **#12 PeripheralScanView** — replace the interim scan list with the real UI
+  (signal bars, filtering, permission/empty states, Debug button →
+  `DebugOutputStreamView` #25) on the #8 `BluetoothManager`. Live end-to-end
+  connect still needs a device advertising the (placeholder) service UUID.
+
+Still gated on firmware **#6** (GATT contract) → client **#9** (real UUIDs): any
+work that needs to read a *specific* real characteristic on hardware.
 
 Done and on `develop`: **#33** (Xcode config, tooling, icon), **#26** (SplashView),
-**#7** (navigation state machine — `AppRouter` / `RootView`).
-Follow the git-flow in
+**#7** (navigation state machine — `AppRouter` / `RootView`). On branch
+`8-ble-central-connectedpeer` (this session, pending squash-merge): **#8** (BLE
+layer). Follow the git-flow in
 [`architecture/github-infrastructure.md`](architecture/github-infrastructure.md):
 branch off `develop`, tag the pre-squash tip (`NN-slug-history`), squash-merge, delete.
 

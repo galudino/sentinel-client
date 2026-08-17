@@ -47,9 +47,20 @@ final class BluetoothManager: BluetoothCentral, @unchecked Sendable {
     /// The running scan-consumer task, retained so ``stopScan()`` can cancel it.
     private var scanTask: Task<Void, Never>?
 
+    /// The periodic stale-entry pruning task (#12), retained to cancel on stop.
+    private var pruneTask: Task<Void, Never>?
+
     /// Ignore duplicate advertisements for a peripheral seen within this window,
     /// to tame `CBCentralManagerScanOptionAllowDuplicatesKey` churn.
     private let scanThrottle: TimeInterval = 0.5
+
+    /// Drop a discovered peripheral this long after its last advertisement, so
+    /// out-of-range devices fade from the scan list (#12).
+    private let staleAfter: TimeInterval = 10
+
+    /// The central's current Bluetooth power/authorization state, for the
+    /// permission/unavailable UI in `PeripheralScanView` (#12).
+    var bluetoothState: CBManagerState { central.bluetoothState }
 
     /// Fan-out for ``bluetoothEventStream()`` subscribers.
     private let eventBroadcaster = BluetoothEventBroadcaster()
@@ -75,6 +86,18 @@ final class BluetoothManager: BluetoothCentral, @unchecked Sendable {
                 self?.ingest(scanData)
             }
         }
+        pruneTask = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(2))
+                self?.pruneStale()
+            }
+        }
+    }
+
+    /// Drop entries whose last advertisement is older than ``staleAfter``.
+    private func pruneStale() {
+        let cutoff = Date.now.addingTimeInterval(-staleAfter)
+        discoveredPeripherals.removeAll { $0.lastUpdated < cutoff }
     }
 
     /// Stop scanning. Leaves the discovered list intact so the UI can still act on
@@ -89,6 +112,8 @@ final class BluetoothManager: BluetoothCentral, @unchecked Sendable {
     private func stopScanTask() {
         scanTask?.cancel()
         scanTask = nil
+        pruneTask?.cancel()
+        pruneTask = nil
     }
 
     /// Upsert a discovered peripheral, throttling repeat advertisements.

@@ -10,16 +10,14 @@ import CoreBluetooth
 import Foundation
 
 /// The live device-snapshot stream (firmware lane-2, `sentinel_gatt_snapshot_stream.hpp`):
-/// the device pushes packed `DeviceSnapshot` frames (80 B) at a cadence.
-///
-/// Phase I (#9) moves the raw frame bytes; typed decoding into `DeviceSnapshot`
-/// is layered on by decoder issue #10.
+/// the device pushes packed ``DeviceSnapshot`` frames (80 B) at a cadence. Frames
+/// are decoded by the ``DeviceSnapshot`` decoder (#10) as they arrive.
 protocol SnapshotStreamService {
-    /// Read the most recent snapshot frame on demand.
-    func readLatest() async throws -> Data
+    /// Read + decode the most recent snapshot on demand (`nil` on a torn record).
+    func readCurrentSnapshot() async throws -> DeviceSnapshot?
     func setNotifying(_ enabled: Bool) async throws
-    /// Live snapshot frames as the device emits them.
-    func snapshotNotifications() -> AsyncStream<Data>
+    /// Live snapshots as the device emits them (torn frames are dropped).
+    func snapshotNotifications() -> AsyncStream<DeviceSnapshot>
 }
 
 struct SnapshotStreamServiceClient<Transport: BluetoothPeripheralTransport>: SnapshotStreamService {
@@ -28,23 +26,25 @@ struct SnapshotStreamServiceClient<Transport: BluetoothPeripheralTransport>: Sna
     private var service: CBUUID { SentinelServiceUUID.snapshotStream.cbuuid }
     private var current: CBUUID { SnapshotStreamCharacteristicUUID.currentDeviceSnapshot.cbuuid }
 
-    func readLatest() async throws -> Data {
-        try await transport.read(characteristic: current, ofService: service) ?? Data()
+    func readCurrentSnapshot() async throws -> DeviceSnapshot? {
+        try await transport.read(characteristic: current, ofService: service)
     }
 
     func setNotifying(_ enabled: Bool) async throws {
         try await transport.setNotify(enabled, characteristic: current, ofService: service)
     }
 
-    func snapshotNotifications() -> AsyncStream<Data> {
+    func snapshotNotifications() -> AsyncStream<DeviceSnapshot> {
         transport.notifications(for: current, ofService: service)
     }
 }
 
 struct MockSnapshotStreamService: SnapshotStreamService {
-    var frame = Data(repeating: 0xAB, count: 80)
+    var snapshot: DeviceSnapshot = .sample
 
-    func readLatest() async throws -> Data { frame }
+    func readCurrentSnapshot() async throws -> DeviceSnapshot? { snapshot }
     func setNotifying(_: Bool) async throws {}
-    func snapshotNotifications() -> AsyncStream<Data> { .init { $0.yield(frame); $0.finish() } }
+    func snapshotNotifications() -> AsyncStream<DeviceSnapshot> {
+        .init { $0.yield(snapshot); $0.finish() }
+    }
 }

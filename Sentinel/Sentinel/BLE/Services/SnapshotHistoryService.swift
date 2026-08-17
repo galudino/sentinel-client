@@ -13,13 +13,13 @@ import Foundation
 /// record store of past `DeviceSnapshot` frames (80 B each). Mirrors firmware
 /// `sentinel_gatt_paged.hpp` (SNAPSHOT_HISTORY).
 ///
-/// Phase I (#9) walks the store as raw record blobs via ``PagedStore``; typed
-/// decoding into `DeviceSnapshot` is layered on by decoder issue #10.
+/// Walks the store via ``PagedStore`` and decodes each 80-byte record with the
+/// ``DeviceSnapshot`` decoder (#10).
 protocol SnapshotHistoryService {
     /// Number of snapshot frames retained on device.
     func readRecordCount() async throws -> UInt32
-    /// Walk the whole store, one 80-byte record per element (decoded by #10).
-    func readAllRawRecords() async throws -> [Data]
+    /// Walk + decode the whole store (torn records are dropped).
+    func readAllSnapshots() async throws -> [DeviceSnapshot]
     /// Erase the on-device store.
     func clearStore() async throws
 }
@@ -44,12 +44,13 @@ struct SnapshotHistoryServiceClient<Transport: BluetoothPeripheralTransport>: Sn
         try await transport.read(characteristic: chars.recordCount, ofService: chars.service) ?? 0
     }
 
-    func readAllRawRecords() async throws -> [Data] {
-        try await PagedStore.readAllRawRecords(
+    func readAllSnapshots() async throws -> [DeviceSnapshot] {
+        let raw = try await PagedStore.readAllRawRecords(
             transport: transport,
             characteristics: chars,
             recordSize: Self.recordSize
         )
+        return raw.compactMap(DeviceSnapshot.decode)
     }
 
     func clearStore() async throws {
@@ -63,9 +64,9 @@ struct SnapshotHistoryServiceClient<Transport: BluetoothPeripheralTransport>: Sn
 }
 
 struct MockSnapshotHistoryService: SnapshotHistoryService {
-    var records: [Data] = [Data(repeating: 0xCD, count: 80)]
+    var snapshots: [DeviceSnapshot] = [.sample]
 
-    func readRecordCount() async throws -> UInt32 { UInt32(records.count) }
-    func readAllRawRecords() async throws -> [Data] { records }
+    func readRecordCount() async throws -> UInt32 { UInt32(snapshots.count) }
+    func readAllSnapshots() async throws -> [DeviceSnapshot] { snapshots }
     func clearStore() async throws {}
 }

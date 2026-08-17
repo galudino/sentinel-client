@@ -9,9 +9,10 @@ import AsyncBluetooth
 import CoreBluetooth
 import Foundation
 
-/// The device's debug log stream — UTF-8 lines the firmware emits when streaming
-/// is enabled. Aggregate service. `DebugOutputStreamView` (#25) merges this with
-/// the local ``BluetoothManager/bluetoothEventStream()`` into one timeline.
+/// The device's debug log stream — UTF-8 lines (≤128 B) the firmware emits when
+/// streaming is enabled. Mirrors firmware `sentinel_gatt_debug.hpp`.
+/// `DebugOutputStreamView` (#25) merges this with the local
+/// ``BluetoothManager/bluetoothEventStream()`` into one timeline.
 protocol DebugStreamService {
     /// Turn the device's debug output stream on or off.
     func setStreaming(_ enabled: Bool) async throws
@@ -22,8 +23,8 @@ protocol DebugStreamService {
 struct DebugStreamServiceClient<Transport: BluetoothPeripheralTransport>: DebugStreamService {
     let transport: Transport
 
-    private var service: CBUUID { DebugStreamServiceUUID.debugStream.cbuuid }
-    private var output: CBUUID { DebugStreamCharacteristicUUID.output.cbuuid }
+    private var service: CBUUID { SentinelServiceUUID.debugStream.cbuuid }
+    private var output: CBUUID { DebugStreamCharacteristicUUID.outputStream.cbuuid }
 
     func setStreaming(_ enabled: Bool) async throws {
         try await transport.setNotify(enabled, characteristic: output, ofService: service)

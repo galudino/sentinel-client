@@ -15,7 +15,7 @@ import Foundation
 /// - Note: Decoded **by hand**, not via ``TriviallyCopyable`` — a Swift struct of
 ///   `UInt8 · UInt8 · UInt8 · UInt16` pads `build` to a 2-byte boundary (6 bytes),
 ///   which would not match the packed 5-byte wire layout.
-struct FirmwareVersion: Equatable, Sendable, CustomStringConvertible {
+struct FirmwareVersion: Equatable, Sendable, Codable, CustomStringConvertible {
     let major: UInt8
     let minor: UInt8
     let patch: UInt8

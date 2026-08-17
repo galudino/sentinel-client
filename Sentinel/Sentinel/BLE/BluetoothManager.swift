@@ -68,7 +68,7 @@ final class BluetoothManager: BluetoothCentral, @unchecked Sendable {
         emit(.scan, "Scan started")
 
         let stream = try await central.scanForPeripherals(
-            withServices: SentinelServiceUUID.allCBUUIDs
+            withServices: SentinelServiceUUID.cbuuids
         )
         scanTask = Task { [weak self] in
             for await scanData in stream {
@@ -128,7 +128,7 @@ final class BluetoothManager: BluetoothCentral, @unchecked Sendable {
 
         connectionState = .discoveringServices(peripheralID: peripheralID)
         emit(.discovery, "Discovering services", peripheralID: peripheralID)
-        try await peripheral.discoverServices(SentinelServiceUUID.allCBUUIDs)
+        try await peripheral.discoverServices(SentinelServiceUUID.cbuuids)
 
         let peer = ConnectedPeer(peripheral: peripheral, central: central)
         peer.refreshMTU()

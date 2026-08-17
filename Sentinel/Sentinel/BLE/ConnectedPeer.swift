@@ -158,7 +158,7 @@ final nonisolated class ConnectedPeer: BluetoothPeripheralTransport, Identifiabl
     var bme280: BME280ServiceClient<ConnectedPeer> { .init(transport: self) }
     var ds3231: DS3231ServiceClient<ConnectedPeer> { .init(transport: self) }
     var system: SystemServiceClient<ConnectedPeer> { .init(transport: self) }
-    var eventLog: EventLogServiceClient<ConnectedPeer> { .init(transport: self) }
+    var systemEventLog: SystemEventLogServiceClient<ConnectedPeer> { .init(transport: self) }
     var snapshotStream: SnapshotStreamServiceClient<ConnectedPeer> { .init(transport: self) }
     var snapshotHistory: SnapshotHistoryServiceClient<ConnectedPeer> { .init(transport: self) }
     var ota: OTAServiceClient<ConnectedPeer> { .init(transport: self) }

@@ -9,84 +9,45 @@ import AsyncBluetooth
 import CoreBluetooth
 import Foundation
 
-/// The BME280 environmental sensor: temperature, humidity, pressure — one-shot
-/// reads plus live notifications. Chip-named to mirror the firmware GATT contract
-/// 1:1 (not a generic `SensorService`).
-///
-/// Scaling matches the firmware fixed-point wire format: temperature in
-/// 0.01 °C/LSB (`Int16`), humidity in 0.01 %/LSB (`UInt16`), pressure in Pa
-/// (`UInt32`).
+/// The BME280 environmental sensor. Per the firmware GATT contract (#9) the
+/// driver's combined read is exposed as **one** packed ``BME280Sample``
+/// characteristic (the one-shot-sample rule) — a single read/notify yields
+/// temperature, humidity, and pressure together. Chip-named to mirror firmware.
 protocol BME280Service {
-    func readTemperature() async throws -> Int16
-    func readHumidity() async throws -> UInt16
-    func readPressure() async throws -> UInt32
-
-    /// Enable/disable notifications for all three characteristics.
+    /// One-shot read of the current ambient sample.
+    func readAmbientSample() async throws -> BME280Sample
+    /// Enable/disable ambient-sample notifications.
     func setNotifying(_ enabled: Bool) async throws
-
-    func temperatureNotifications() -> AsyncStream<Int16>
-    func humidityNotifications() -> AsyncStream<UInt16>
-    func pressureNotifications() -> AsyncStream<UInt32>
+    /// Live ambient samples as the device emits them.
+    func ambientSampleNotifications() -> AsyncStream<BME280Sample>
 }
 
 struct BME280ServiceClient<Transport: BluetoothPeripheralTransport>: BME280Service {
     let transport: Transport
 
-    private var service: CBUUID { BME280ServiceUUID.bme280.cbuuid }
+    private var service: CBUUID { SentinelServiceUUID.bme280.cbuuid }
+    private var sample: CBUUID { BME280CharacteristicUUID.ambientSample.cbuuid }
 
-    func readTemperature() async throws -> Int16 {
-        try await transport.read(characteristic: BME280CharacteristicUUID.temperature.cbuuid, ofService: service) ?? 0
-    }
-
-    func readHumidity() async throws -> UInt16 {
-        try await transport.read(characteristic: BME280CharacteristicUUID.humidity.cbuuid, ofService: service) ?? 0
-    }
-
-    func readPressure() async throws -> UInt32 {
-        try await transport.read(characteristic: BME280CharacteristicUUID.pressure.cbuuid, ofService: service) ?? 0
+    func readAmbientSample() async throws -> BME280Sample {
+        try await transport.read(characteristic: sample, ofService: service)
+            ?? BME280Sample(temperatureCentiDegC: 0, humidityCentiPct: 0, pressurePa: 0)
     }
 
     func setNotifying(_ enabled: Bool) async throws {
-        try await transport.setNotify(
-            enabled,
-            characteristic: BME280CharacteristicUUID.temperature.cbuuid,
-            ofService: service
-        )
-        try await transport.setNotify(
-            enabled,
-            characteristic: BME280CharacteristicUUID.humidity.cbuuid,
-            ofService: service
-        )
-        try await transport.setNotify(
-            enabled,
-            characteristic: BME280CharacteristicUUID.pressure.cbuuid,
-            ofService: service
-        )
+        try await transport.setNotify(enabled, characteristic: sample, ofService: service)
     }
 
-    func temperatureNotifications() -> AsyncStream<Int16> {
-        transport.notifications(for: BME280CharacteristicUUID.temperature.cbuuid, ofService: service)
-    }
-
-    func humidityNotifications() -> AsyncStream<UInt16> {
-        transport.notifications(for: BME280CharacteristicUUID.humidity.cbuuid, ofService: service)
-    }
-
-    func pressureNotifications() -> AsyncStream<UInt32> {
-        transport.notifications(for: BME280CharacteristicUUID.pressure.cbuuid, ofService: service)
+    func ambientSampleNotifications() -> AsyncStream<BME280Sample> {
+        transport.notifications(for: sample, ofService: service)
     }
 }
 
 struct MockBME280Service: BME280Service {
-    var temperature: Int16 = 2200 // 22.00 °C
-    var humidity: UInt16 = 4500 // 45.00 %
-    var pressure: UInt32 = 101_325 // Pa
+    var sample = BME280Sample(temperatureCentiDegC: 2200, humidityCentiPct: 4500, pressurePa: 101_325)
 
-    func readTemperature() async throws -> Int16 { temperature }
-    func readHumidity() async throws -> UInt16 { humidity }
-    func readPressure() async throws -> UInt32 { pressure }
+    func readAmbientSample() async throws -> BME280Sample { sample }
     func setNotifying(_: Bool) async throws {}
-    func temperatureNotifications() -> AsyncStream<Int16> { .init { $0.yield(temperature); $0.finish() } }
-    func humidityNotifications() -> AsyncStream<UInt16> { .init { $0.yield(humidity); $0.finish() } }
-    func pressureNotifications() -> AsyncStream<UInt32> { .init { $0.yield(pressure); $0.finish() } }
+    func ambientSampleNotifications() -> AsyncStream<BME280Sample> {
+        .init { $0.yield(sample); $0.finish() }
+    }
 }

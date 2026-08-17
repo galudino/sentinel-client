@@ -33,12 +33,22 @@ sourced from the firmware repo (no client invention). Highlights beyond #8–#12
   banner driven by `firmwareUpdateAvailable` (#20 wires the real signal).
 - **#23 PairedPeerStore + AppPreferences** — UserDefaults-backed, `@Observable`,
   versioned keys, injected app-wide; `register(id:name:)` uses peripheral identity;
-  `FirmwareVersion` gained `Codable`. Live consumption deferred to #12/#19.
+  `FirmwareVersion` gained `Codable`.
+- **#19 SettingsView** — real Form: paired devices (forget / forget-all), connection
+  (identifier + Disconnect), Appearance/Units/Notifications/Developer bound to
+  `AppPreferences`, About. Added **`AppRouter.disconnect()`** (user-initiated BLE
+  teardown, vs the involuntary-drop `didDisconnect()`).
 - Added `Sentinel.xctestplan` (wired into the scheme).
+
+> **Loose end (small):** nothing calls `PairedPeerStore.register(id:name:)` on a
+> successful connect yet, so the Settings *Paired Devices* list is empty at runtime.
+> Wire it where the router reaches `.connected` (inject the store into the router,
+> or register from `RootView`'s `.connected` branch) — then #12's Trusted section +
+> #19's list populate.
 
 **Flow is now real end-to-end:** `PeripheralScanView → ConnectingView → MainTabView`
 works on hardware (connect + discovery are real); tab *contents* are stubs until
-#15–#19. **47→46 unique tests green.**
+#15–#19. **57 unique tests green.**
 
 Earlier this session (#8–#12), sourced from firmware:
 - **#9 GATT contract** — `GATTContract.swift`: real 128-bit UUIDs transcribed from

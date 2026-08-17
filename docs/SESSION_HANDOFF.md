@@ -20,22 +20,37 @@ the architecture docs rather than letting them accumulate here.
 
 ---
 
-**Last updated:** 2026-08-16 (#26 **SplashView done** — squash-merged to
-`develop`, pre-squash history at tag `26-view-splashview-history`). This session:
-built `SplashView` (`sensor.fill` variable-color pulse, gates the root swap in
-`SentinelApp`); set `AccentColor` to brand cyan (#2DE2CD) so splash + icon + tint
-match; fixed the build's lint phase and added **SwiftFormat** (runs format-fix
-**before** SwiftLint, phase moved ahead of compile, and `run-swiftlint.sh` no
-longer ships inside the `.app`). **Prior (2026-08-13):** #33 Xcode config done
-(tag `33-xcode-config-icon-history`) — single-size `sensor.fill` app icon; rolling
-latest-iOS policy (currently 26.4; see #4). **Prior (2026-06-29):** durable
-sections rotated into [`docs/architecture/`](architecture/).
+**Last updated:** 2026-08-16 (#7 **navigation state machine done** —
+squash-merged to `develop`, pre-squash history at tag
+`7-navigation-state-machine-history`). This session: built `AppState` +
+`@MainActor @Observable AppRouter` (four states: `.scanning` / `.connecting` /
+`.connected` / `.updatingFirmware`; guarded intents, views never mutate `state`)
+and `RootView` (the state switch, **no** outer `NavigationStack` — each branch
+owns its nav container so the tab bar isn't wrapped; DFU leaves the tab bar);
+wired `SentinelApp` DI (`BluetoothManager` → `AppRouter`, `.environment`
+injection, splash→`RootView`) and **deleted the `ContentView` placeholder**.
+`selectedTab` lives on `AppRouter` (not `MainTabView`) so tab selection survives
+DFU round-trips + reconnects. Landed **minimal seeds** of the #8 types
+(`BluetoothManager`, `ConnectedPeer`, `FirmwareImage`) — clearly marked
+"expanded in #8" — plus stubs for `PeripheralScanView` (#12), `ConnectingView`
+(#13), `MainTabView` (#14, 5 tabs), `FirmwareUpdateView` (#21). 14 Swift Testing
+cases (`AppRouterTests`) cover every transition; verified green + a clean build
+on an iOS 26.4 sim, and walked the full flow live (scan→connect→tabs→DFU→cancel).
+**Prior (2026-08-16):** #26 **SplashView done** (tag `26-view-splashview-history`)
+— `sensor.fill` variable-color pulse; `AccentColor` = brand cyan (#2DE2CD);
+SwiftFormat added ahead of SwiftLint in the build phase. **Prior (2026-08-13):**
+#33 Xcode config done (tag `33-xcode-config-icon-history`). **Prior (2026-06-29):**
+durable sections rotated into [`docs/architecture/`](architecture/).
 
-**App code so far:** `SentinelApp` (splash-gated root swap) → `SplashView` (#26,
-done) → falls through to the stock `ContentView` **placeholder** (replaced by
-`RootView` when #7 lands). Build phase runs SwiftFormat → SwiftLint on every
-build (configs: `Sentinel/.swiftformat`, `Sentinel/.swiftlint.yml`; scripts in
-`Sentinel/Scripts/`). Everything below `RootView` is still forward-spec.
+**App code so far:** `SentinelApp` (splash-gated root swap; creates
+`BluetoothManager` + `AppRouter` in `init()`, injects via `.environment`) →
+`SplashView` (#26) → `RootView` (#7) switching on `AppRouter.state`. `RootView`'s
+four branches render `PeripheralScanView` / `ConnectingView` / `MainTabView` /
+`FirmwareUpdateView` — all **stubs** pending #12/#13/#14/#21. The BLE layer
+(`BluetoothManager`, `ConnectedPeer`) and `FirmwareImage` are **seeds** awaiting
+#8/#20/#21. Build phase runs SwiftFormat → SwiftLint on every build (configs:
+`Sentinel/.swiftformat`, `Sentinel/.swiftlint.yml`; scripts in
+`Sentinel/Scripts/`). Everything inside the stubs is still forward-spec.
 
 ---
 
@@ -125,18 +140,21 @@ start today:
 
 ## Next session — recommended starting point
 
-**#7 (Architecture: SwiftUI navigation + state machine)** is next. It introduces
-`AppRouter` (the `@Observable` state machine) and `RootView`, which **replaces the
-`ContentView` placeholder** that `SplashView` currently falls through to. Concretely:
-`SentinelApp.init()` creates `AppRouter` (+ the other app-wide `@Observable`s as they
-arrive) and injects via `.environment(...)`; `RootView` switches on router state
-(`.scanning` / `.connecting` / `.connected` / `.updatingFirmware`) per the
-navigation model in [`architecture/architecture.md`](architecture/architecture.md).
-Wire `SplashView`'s `onComplete` to reveal `RootView`. No firmware dependency —
-pure SwiftUI structure. After #7, **#8** (BluetoothManager + transport protocol)
-is the BLE foundation (concrete characteristic reads wait on firmware #6 UUIDs / #9).
+**#8 (BLE: AsyncBluetooth central + ConnectedPeer + service clients)** is next —
+the BLE foundation. #7 landed **seeds** of `BluetoothManager`, `ConnectedPeer`,
+and `FirmwareImage` (marked "expanded in #8"); #8 replaces them with the real
+types on `AsyncBluetooth` 6.2.2 (already an SPM dep): scanning + discovered list,
+`connect()` doing real service/characteristic discovery and returning a
+`ConnectedPeer` that owns the `Peripheral` and conforms to
+`BluetoothPeripheralTransport`, MTU/RSSI, the two-layer service protocols, and
+the BLE event stream (#25). Keep the router's public surface intact
+(`beginConnect` currently takes a `UUID` + name — rewire it to take a real
+`Peripheral` from the scan list). Concrete characteristic reads still wait on the
+firmware GATT contract (firmware #6) → client UUID enums (#9). Mock-transport +
+mock-service layering per [`architecture/architecture.md`](architecture/architecture.md).
 
-Done and on `develop`: **#33** (Xcode config, tooling, icon), **#26** (SplashView).
+Done and on `develop`: **#33** (Xcode config, tooling, icon), **#26** (SplashView),
+**#7** (navigation state machine — `AppRouter` / `RootView`).
 Follow the git-flow in
 [`architecture/github-infrastructure.md`](architecture/github-infrastructure.md):
 branch off `develop`, tag the pre-squash tip (`NN-slug-history`), squash-merge, delete.

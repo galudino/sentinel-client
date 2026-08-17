@@ -167,8 +167,21 @@ final class AppRouter {
     /// The link dropped (from any non-scanning state) — return to `.scanning`,
     /// releasing the ``ConnectedPeer``. Deliberately does **not** reset
     /// ``selectedTab``, so a reconnect lands the user back on the same tab.
+    ///
+    /// Use this for an *involuntary* drop (the device went away). For a
+    /// user-initiated disconnect that should also tear down the BLE link, use
+    /// ``disconnect()``.
     func didDisconnect() {
         guard state != .scanning else { return }
+        state = .scanning
+    }
+
+    /// User-initiated disconnect (Settings / Device tab): actively tear down the
+    /// BLE link, then return to `.scanning`. Only valid while `.connected`.
+    func disconnect() {
+        guard case let .connected(peer) = state else { return }
+        let central = bluetoothManager
+        Task { try? await central.disconnect(peer) }
         state = .scanning
     }
 

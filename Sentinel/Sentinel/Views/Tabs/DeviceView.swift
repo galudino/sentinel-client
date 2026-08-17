@@ -41,7 +41,7 @@ struct DeviceView: View {
 
                 Section {
                     Button(role: .destructive) {
-                        router.didDisconnect()
+                        router.disconnect()
                     } label: {
                         Label("Disconnect", systemImage: "wifi.slash")
                     }

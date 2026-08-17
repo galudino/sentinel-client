@@ -59,11 +59,11 @@ enum MainTab: String, CaseIterable, Identifiable {
 
     var systemImage: String {
         switch self {
-        case .home: "chart.xyaxis.line"
-        case .logs: "list.bullet.rectangle"
-        case .snapshots: "camera.aperture"
-        case .device: "bolt.horizontal.fill"
-        case .settings: "gearshape.fill"
+        case .home: "sensor.fill"
+        case .logs: "list.bullet.indent"
+        case .snapshots: "square.stack.3d.down.right.fill"
+        case .device: "info.circle.fill"
+        case .settings: "gearshape.2.fill"
         }
     }
 }

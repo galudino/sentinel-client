@@ -41,7 +41,7 @@ struct HomeView: View {
 
                 ContentUnavailableView(
                     "Live Telemetry",
-                    systemImage: "chart.xyaxis.line",
+                    systemImage: "sensor.fill",
                     description: Text(
                         "BME280 temperature, humidity, and pressure — live and historical — arrive in #15."
                     )

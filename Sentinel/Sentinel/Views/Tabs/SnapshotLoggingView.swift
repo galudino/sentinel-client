@@ -19,7 +19,7 @@ struct SnapshotLoggingView: View {
         NavigationStack {
             ContentUnavailableView(
                 "Device Snapshots",
-                systemImage: "camera.aperture",
+                systemImage: "square.stack.3d.down.right.fill",
                 description: Text("Persisted snapshot history and live capture arrive in #17.")
             )
             .navigationTitle("Snapshots")

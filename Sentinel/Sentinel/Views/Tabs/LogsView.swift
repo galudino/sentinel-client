@@ -19,7 +19,7 @@ struct LogsView: View {
         NavigationStack {
             ContentUnavailableView(
                 "System Event Log",
-                systemImage: "list.bullet.rectangle",
+                systemImage: "list.bullet.indent",
                 description: Text("Retrieved device events (boot, faults, BLE, firmware updates) arrive in #16.")
             )
             .navigationTitle("Logs")

@@ -60,11 +60,15 @@ struct MainTabView: View {
 #Preview("Connected") {
     MainTabView()
         .environment(AppRouter(bluetoothManager: BluetoothManager()))
+        .environment(AppPreferences())
         .environment(ConnectedPeer(name: "Sentinel"))
+        .environment(PairedPeerStore())
 }
 
 #Preview("Firmware update available") {
     MainTabView(firmwareUpdateAvailable: true)
         .environment(AppRouter(bluetoothManager: BluetoothManager()))
+        .environment(AppPreferences())
         .environment(ConnectedPeer(name: "Sentinel"))
+        .environment(PairedPeerStore())
 }

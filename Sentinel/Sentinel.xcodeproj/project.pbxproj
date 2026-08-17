@@ -30,6 +30,7 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		A64AD244303374FA00338F4C /* Sentinel.xctestplan */ = {isa = PBXFileReference; lastKnownFileType = text; path = Sentinel.xctestplan; sourceTree = "<group>"; };
 		A6D32AA42FF217AA0058FE51 /* run-swiftlint.sh */ = {isa = PBXFileReference; lastKnownFileType = text.script.sh; path = "run-swiftlint.sh"; sourceTree = "<group>"; };
 		A6E0897F2FB25D0000AB1EB6 /* Sentinel.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Sentinel.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		A6E0898C2FB25D0200AB1EB6 /* SentinelTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = SentinelTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -100,6 +101,7 @@
 		A6E089762FB25D0000AB1EB6 = {
 			isa = PBXGroup;
 			children = (
+				A64AD244303374FA00338F4C /* Sentinel.xctestplan */,
 				A6D32AA52FF217AA0058FE51 /* Scripts */,
 				A6E089812FB25D0000AB1EB6 /* Sentinel */,
 				A6E0898F2FB25D0200AB1EB6 /* SentinelTests */,
@@ -126,7 +128,7 @@
 			isa = PBXNativeTarget;
 			buildConfigurationList = A6E089A02FB25D0200AB1EB6 /* Build configuration list for PBXNativeTarget "Sentinel" */;
 			buildPhases = (
-				A6D32AA32FF216300058FE51 /* ShellScript */,
+				A6D32AA32FF216300058FE51 /* SwiftFormat + SwiftLint */,
 				A6E0897B2FB25D0000AB1EB6 /* Sources */,
 				A6E0897C2FB25D0000AB1EB6 /* Frameworks */,
 				A6E0897D2FB25D0000AB1EB6 /* Resources */,
@@ -267,10 +269,9 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXShellScriptBuildPhase section */
-		A6D32AA32FF216300058FE51 /* ShellScript */ = {
+		A6D32AA32FF216300058FE51 /* SwiftFormat + SwiftLint */ = {
 			isa = PBXShellScriptBuildPhase;
 			alwaysOutOfDate = 1;
-			name = "SwiftFormat + SwiftLint";
 			buildActionMask = 2147483647;
 			files = (
 			);
@@ -278,6 +279,7 @@
 			);
 			inputPaths = (
 			);
+			name = "SwiftFormat + SwiftLint";
 			outputFileListPaths = (
 			);
 			outputPaths = (

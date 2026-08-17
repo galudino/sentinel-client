@@ -31,6 +31,9 @@ sourced from the firmware repo (no client invention). Highlights beyond #8–#12
 - **#14 MainTabView** — the 5-tab shell (Home/Logs/Snapshots/Device/Settings), each
   tab stubbed under `Views/Tabs/` (fleshed out by #15–#19); Device badge + Home
   banner driven by `firmwareUpdateAvailable` (#20 wires the real signal).
+- **#23 PairedPeerStore + AppPreferences** — UserDefaults-backed, `@Observable`,
+  versioned keys, injected app-wide; `register(id:name:)` uses peripheral identity;
+  `FirmwareVersion` gained `Codable`. Live consumption deferred to #12/#19.
 - Added `Sentinel.xctestplan` (wired into the scheme).
 
 **Flow is now real end-to-end:** `PeripheralScanView → ConnectingView → MainTabView`
@@ -232,9 +235,8 @@ fleshing them out is the bulk of what's left. Good next picks:
   (`peer.snapshotHistory`/`snapshotStream` → `DeviceSnapshot`), **#18 DeviceView**
   (`peer.system` + DIS reads from #9; GATT explorer), **#19 SettingsView**. All the
   service clients + typed models + `Mock*Service` previews already exist.
-- **#23 PairedPeerStore** (small, no deps) — UserDefaults-backed trusted-peer
-  registry; unblocks the #12 **Trusted devices** section (`PeripheralRow` already
-  has the `trusted:` style) and #19's paired-device management.
+- **#23 PairedPeerStore** — done (this session). Unblocks the #12 Trusted-devices
+  section + #19 paired-device management (consumption still to wire).
 - **#25 DebugOutputStreamView** — merge `BluetoothManager.bluetoothEventStream()`
   + on-device `DebugStreamService`; unblocks the #12 Debug button.
 - **#20 firmware selection** — provides the real `firmwareUpdateAvailable` signal

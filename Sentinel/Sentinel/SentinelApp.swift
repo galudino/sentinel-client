@@ -9,9 +9,36 @@ import SwiftUI
 
 @main
 struct SentinelApp: App {
+    /// App-wide `@Observable` objects — created once here and injected via
+    /// `.environment(...)`, read in views via `@Environment`. **No `.shared`
+    /// singletons.** Independent objects are created directly; objects that
+    /// depend on them are created after, via `_x = State(initialValue:)` (see
+    /// `init()`). More arrive as the BLE layer (#8) and stores (#23) land.
+    @State private var bluetoothManager: BluetoothManager
+    @State private var router: AppRouter
+
+    /// Whether the launch splash (#26) has finished. Once true, the scene swaps
+    /// `SplashView` for `RootView` (the AppRouter-driven state machine, #7).
+    @State private var hasSplashed = false
+
+    init() {
+        let bluetoothManager = BluetoothManager()
+        self.bluetoothManager = bluetoothManager
+
+        // `AppRouter` depends on the manager, so build it once the independent
+        // object exists.
+        _router = State(initialValue: AppRouter(bluetoothManager: bluetoothManager))
+    }
+
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            if hasSplashed {
+                RootView()
+                    .environment(bluetoothManager)
+                    .environment(router)
+            } else {
+                SplashView(onComplete: { hasSplashed = true })
+            }
         }
     }
 }

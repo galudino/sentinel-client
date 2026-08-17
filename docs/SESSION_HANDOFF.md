@@ -239,14 +239,14 @@ and `SystemEventRecord` (#11). Foundation status:
 The BLE foundation + the scan/connect/tabs flow are done. The tabs are stubs —
 fleshing them out is the bulk of what's left. Good next picks:
 
-- **#15–#19 tab content** — replace the `Views/Tabs/` stubs with real views:
+- **Remaining tab content** — replace the `Views/Tabs/` stubs with real views:
   **#15 HomeView** (live BME280 via `peer.bme280` + charts), **#16 LogsView**
   (`peer.systemEventLog` → `SystemEventRecord` display API), **#17 SnapshotLogging**
   (`peer.snapshotHistory`/`snapshotStream` → `DeviceSnapshot`), **#18 DeviceView**
-  (`peer.system` + DIS reads from #9; GATT explorer), **#19 SettingsView**. All the
-  service clients + typed models + `Mock*Service` previews already exist.
-- **#23 PairedPeerStore** — done (this session). Unblocks the #12 Trusted-devices
-  section + #19 paired-device management (consumption still to wire).
+  (`peer.system` + DIS reads from #9; GATT explorer). (#19 SettingsView is done.)
+  All the service clients + typed models + `Mock*Service` previews already exist.
+- **Register-on-connect hook** (small) — wire `PairedPeerStore.register` on
+  `.connected` so #12's Trusted section + #19's Paired Devices list populate.
 - **#25 DebugOutputStreamView** — merge `BluetoothManager.bluetoothEventStream()`
   + on-device `DebugStreamService`; unblocks the #12 Debug button.
 - **#20 firmware selection** — provides the real `firmwareUpdateAvailable` signal

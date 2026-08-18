@@ -69,8 +69,9 @@ final class BluetoothManager: BluetoothCentral, @unchecked Sendable {
 
     // MARK: Scanning
 
-    /// Start scanning for sentinel peripherals, filtered to the known service
-    /// UUIDs. Idempotent: a second call replaces the running scan.
+    /// Start scanning for sentinel peripherals, filtered to the single service
+    /// the firmware advertises — the System UUID (firmware #67). Idempotent: a
+    /// second call replaces the running scan.
     func scanForPeripherals() async throws {
         try await central.waitUntilReady()
         stopScanTask()
@@ -79,7 +80,7 @@ final class BluetoothManager: BluetoothCentral, @unchecked Sendable {
         emit(.scan, "Scan started")
 
         let stream = try await central.scanForPeripherals(
-            withServices: SentinelServiceUUID.cbuuids
+            withServices: SentinelServiceUUID.advertisedForScan
         )
         scanTask = Task { [weak self] in
             for await scanData in stream {

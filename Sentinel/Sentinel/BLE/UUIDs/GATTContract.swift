@@ -42,6 +42,13 @@ enum SentinelServiceUUID: String, CaseIterable {
 
     nonisolated var cbuuid: CBUUID { CBUUID(string: rawValue) }
     nonisolated static let cbuuids: [CBUUID] = allCases.map(\.cbuuid)
+
+    /// The scan filter. The firmware advertises **only** the System 128-bit UUID
+    /// in its advertisement packet (firmware #67) — the other services are
+    /// discoverable only after connecting — so a service-filtered scan must
+    /// filter on exactly this one UUID, not all of ``cbuuids``. The full GATT DB
+    /// is discovered post-connect via `discoverServices(cbuuids)`.
+    nonisolated static let advertisedForScan: [CBUUID] = [system.cbuuid]
 }
 
 // MARK: - Chip-specific services

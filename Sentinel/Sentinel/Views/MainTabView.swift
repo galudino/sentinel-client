@@ -49,7 +49,7 @@ struct MainTabView: View {
             }
 
             Tab(MainTab.device.title, systemImage: MainTab.device.systemImage, value: MainTab.device) {
-                DeviceView(peer: peer)
+                DeviceView(peer: peer, system: peer.system)
             }
             .badge(firmwareUpdateAvailable ? Text("!") : nil)
 

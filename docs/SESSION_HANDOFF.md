@@ -234,6 +234,18 @@ and `SystemEventRecord` (#11). Foundation status:
 > Sentinel service UUIDs — the iOS simulator has no BLE (it renders the
 > Bluetooth-unavailable path, as verified for #12).
 
+> ⚠️ **Discovery blocked on firmware fix — [sentinel-firmware #67](https://github.com/galudino/sentinel-firmware/issues/67).**
+> The board currently advertises only its name + the 16-bit **Battery** UUID
+> (`0x180F`), **not** any custom 128-bit Sentinel service UUID — so a service-filtered
+> scan (`scanForPeripherals(withServices:)`) can't discover it (name-only scan does).
+> Advertised service UUIDs are separate from the GATT DB. Firmware #67 will advertise
+> the **System** UUID (primary adv) + name (scan response) + re-advertise on disconnect.
+> **Client impact: none required** — CoreBluetooth's filter is OR-semantics and
+> `System` is already in the 8-UUID filter, so it works once firmware advertises it.
+> **Optional follow-up:** narrow `PeripheralScanView`'s scan from
+> `SentinelServiceUUID.cbuuids` (all 8) to just the advertised **System** UUID for
+> selectivity, once #67 lands.
+
 ---
 
 ## Repo setup to-dos

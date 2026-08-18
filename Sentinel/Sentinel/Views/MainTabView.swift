@@ -31,14 +31,17 @@ struct MainTabView: View {
         TabView(selection: $router.selectedTab) {
             Tab(MainTab.home.title, systemImage: MainTab.home.systemImage, value: MainTab.home) {
                 HomeView(
-                    peer: peer,
+                    deviceName: peer.name,
+                    bme280: peer.bme280,
+                    ds3231: peer.ds3231,
+                    history: peer.snapshotHistory,
                     firmwareUpdateAvailable: firmwareUpdateAvailable,
                     onShowFirmwareUpdate: { router.selectedTab = .device }
                 )
             }
 
             Tab(MainTab.logs.title, systemImage: MainTab.logs.systemImage, value: MainTab.logs) {
-                LogsView(peer: peer)
+                LogsView(eventLog: peer.systemEventLog)
             }
 
             Tab(MainTab.snapshots.title, systemImage: MainTab.snapshots.systemImage, value: MainTab.snapshots) {

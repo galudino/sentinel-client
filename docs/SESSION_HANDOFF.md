@@ -20,6 +20,44 @@ the architecture docs rather than letting them accumulate here.
 
 ---
 
+**Last updated:** 2026-08-18 — **#15 HomeView + #16 LogsView done; scan narrowed
+to the advertised System UUID.** All on `develop` (linear, not pushed):
+- **`6a9314f` BLE scan filter (fw #67):** `scanForPeripherals` now filters on the
+  single **advertised** service — `SentinelServiceUUID.advertisedForScan =
+  [.system]` — since the board advertises only the System 128-bit UUID (firmware
+  #67, fixed same day on the firmware `develop`). Post-connect `discoverServices`
+  still walks the full `cbuuids` contract. Build + unit tests green.
+- **`6a91f9d` #15 HomeView + #16 LogsView:**
+  - **#15 HomeView** — Apple-Health-Summary-style: BME280 ambient hero card
+    (T/H/P), 24 h Swift-Charts temperature trend (min/max/avg), DS3231 time &
+    clock, firmware-update banner. Unit-aware via `AppPreferences`. Leaf view
+    taking `any *Service`; 4 preview states (live / empty / update / °F·inHg).
+    "Show all environmental data" pushes a lightweight snapshot list (rich
+    per-section charts are deliberately deferred per the issue).
+  - **#16 LogsView** — System Event Log browser: scrollable filter chips
+    (All/Boot/Firmware/BLE/Faults/POST/Other), day-sectioned most-recent-first
+    list via the `SystemEventRecord` display API (#11), per-variant `EventDetailView`
+    (typed fields + raw bytes for `.unknown`). Leaf view taking
+    `any SystemEventLogService`.
+  - `MainTabView` now injects the per-service clients (leaf-view convention).
+
+**⏭️ PICK UP HERE (next session), in the maintainer's stated order:**
+1. **#17 SnapshotLoggingView** — *deliberately deferred to its own session:* it is
+   not a single view but a **generic snapshot-logging + charting + export
+   subsystem** (Snapshot protocol, type-erased field/value system, data providers,
+   capture sessions), a faithful port of a proven prior design that lives in
+   another project (**no in-repo code to port from yet**). Sized for a dedicated
+   session per the ~1-issue-per-session cadence; the one genuinely new problem is
+   chart performance on long (30–60 min+) capture sessions.
+2. **#18 DeviceView** (device admin + GATT explorer) — more self-contained;
+   good candidate if #17 is postponed.
+3. **DFU trio #20 / #21 / #22**, then **#25 / #34** (debug output stream) last.
+
+**Note (firmware CI):** the maintainer asked whether CI publishes firmware
+releases — it does **not** (only the Pages/Doxygen workflow exists). That's
+firmware **#60** (Phase II); investigation was cataloged to that issue and
+deferred. Not a client concern.
+
 **Last updated:** 2026-08-17 (**#8–#14 all done + closed**, and **`develop` merged
 to `main`** — merge commit `784a292`; not pushed). Foundational BLE + models + the
 scan/connect/tabs flow. Firmware **#6 / #34 / #36 are CLOSED**, so #9/#10/#11 were

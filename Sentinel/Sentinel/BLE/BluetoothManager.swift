@@ -165,6 +165,28 @@ final class BluetoothManager: BluetoothCentral, @unchecked Sendable {
         return peer
     }
 
+    /// Reconnect to a peripheral after a DFU reboot (#22). The device self-reset on
+    /// `Verify`, so its previous handle is stale: rescan until the same identity
+    /// re-advertises (bounded by ``reconnectScanTimeout``), then connect through the
+    /// normal path. Falls back to CoreBluetooth's retained set if the rescan window
+    /// elapses without a fresh advertisement.
+    func reconnect(peripheralID: UUID, name: String? = nil) async throws -> ConnectedPeer {
+        emit(.connection, "Reconnecting after update", peripheralID: peripheralID)
+        try await scanForPeripherals()
+
+        let deadline = Date.now.addingTimeInterval(reconnectScanTimeout)
+        while Date.now < deadline, !discoveredPeripherals.contains(where: { $0.id == peripheralID }) {
+            try? await Task.sleep(for: .milliseconds(300))
+        }
+        try? await stopScan()
+
+        return try await connect(peripheralID: peripheralID, name: name)
+    }
+
+    /// How long ``reconnect(peripheralID:name:)`` waits for the rebooted peripheral
+    /// to re-advertise before falling back to the retained set.
+    private var reconnectScanTimeout: TimeInterval { 30 }
+
     /// Abort an in-flight connect (user cancel / timeout, #13): cancel the pending
     /// CoreBluetooth connection for the peripheral and drop back to disconnected.
     func cancelConnect(peripheralID: UUID) async {

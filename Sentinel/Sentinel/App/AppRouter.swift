@@ -200,15 +200,22 @@ final class AppRouter {
         state = .connected(peer: peer)
     }
 
-    /// DFU finished — return to `.connected`.
-    ///
-    /// - Note: Seed behavior reuses the same peer. The real success path (#22)
-    ///   involves the device self-resetting and disconnecting, then a reconnect;
-    ///   this method will be refined to route through that handshake. Because
-    ///   ``selectedTab`` lives on the router, the tab is preserved across that
-    ///   round-trip regardless.
+    /// DFU finished but no *fresh* connection was handed back (previews / the
+    /// no-reconnector path) — fall back to the existing peer. Production completes
+    /// through ``firmwareUpdateReconnected(peer:)`` with the post-reboot peer.
+    /// Because ``selectedTab`` lives on the router, the tab is preserved across the
+    /// round-trip regardless.
     func firmwareUpdateCompleted() {
         guard case let .updatingFirmware(peer, _) = state else { return }
+        state = .connected(peer: peer)
+    }
+
+    /// DFU finished and the uploader (#22) reconnected to the device after its
+    /// self-reset — land `.connected` on the **new** `ConnectedPeer` (the old one's
+    /// link is gone), so the tabs bind to the live connection and read back the new
+    /// firmware version. Only valid while `.updatingFirmware`.
+    func firmwareUpdateReconnected(peer: ConnectedPeer) {
+        guard case .updatingFirmware = state else { return }
         state = .connected(peer: peer)
     }
 }

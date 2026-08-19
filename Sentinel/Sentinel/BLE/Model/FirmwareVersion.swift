@@ -15,7 +15,7 @@ import Foundation
 /// - Note: Decoded **by hand**, not via ``TriviallyCopyable`` — a Swift struct of
 ///   `UInt8 · UInt8 · UInt8 · UInt16` pads `build` to a 2-byte boundary (6 bytes),
 ///   which would not match the packed 5-byte wire layout.
-struct FirmwareVersion: Equatable, Sendable, Codable, CustomStringConvertible {
+nonisolated struct FirmwareVersion: Equatable, Sendable, Codable, CustomStringConvertible {
     let major: UInt8
     let minor: UInt8
     let patch: UInt8
@@ -24,6 +24,32 @@ struct FirmwareVersion: Equatable, Sendable, Codable, CustomStringConvertible {
     var description: String { "\(major).\(minor).\(patch).\(build)" }
     /// Display form without the build number, e.g. `"1.2.3"`.
     var shortVersion: String { "\(major).\(minor).\(patch)" }
+}
+
+extension FirmwareVersion {
+    /// Parse a dotted version string — `"1.2.3"` or `"1.2.3.45"` (the trailing
+    /// component is the `build`; defaults to `0` when omitted). Returns `nil` on a
+    /// malformed string. Used by the firmware-selection flow (#20) and previews to
+    /// turn a human-typed version into the packed wire form.
+    init?(parsing string: String) {
+        let parts = string.split(separator: ".", omittingEmptySubsequences: false).map(String.init)
+        guard (3 ... 4).contains(parts.count),
+              let major = UInt8(parts[0]),
+              let minor = UInt8(parts[1]),
+              let patch = UInt8(parts[2])
+        else { return nil }
+        let build: UInt16 = parts.count == 4 ? (UInt16(parts[3]) ?? 0) : 0
+        self.init(major: major, minor: minor, patch: patch, build: build)
+    }
+}
+
+/// Ordered by `major`, then `minor`, `patch`, `build` — so the client can pick the
+/// newest available image (#20) and confirm a DFU actually moved the device
+/// forward (#22).
+extension FirmwareVersion: Comparable {
+    static func < (lhs: FirmwareVersion, rhs: FirmwareVersion) -> Bool {
+        (lhs.major, lhs.minor, lhs.patch, lhs.build) < (rhs.major, rhs.minor, rhs.patch, rhs.build)
+    }
 }
 
 extension FirmwareVersion {

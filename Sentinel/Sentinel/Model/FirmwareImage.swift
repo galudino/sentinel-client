@@ -31,9 +31,13 @@ struct FirmwareImage: Equatable, Identifiable {
     /// The image's own version — the release the device should report after a
     /// successful flash + reboot.
     let version: FirmwareVersion
-    /// Human display label — `"1.0.0"`, `"1.0.1-test"`, or an imported file's name
-    /// when its version can't be parsed. Defaults to the numeric short version.
+    /// Human display label — `"1.0.1"`, `"255.255.255-test"`, or an imported file's
+    /// name when its version can't be parsed. Defaults to the numeric short version.
     let displayName: String
+    /// A pre-release / test build (its file name carries a `-<label>` suffix, e.g.
+    /// `255.255.255-test`). Selectable for testing/rollback, but **never** offered
+    /// as the recommended update — only stable releases are recommended.
+    let isPrerelease: Bool
     /// The signed MCUBoot image bytes to upload.
     let data: Data
     let source: Source
@@ -44,6 +48,7 @@ struct FirmwareImage: Equatable, Identifiable {
         id: UUID = UUID(),
         version: FirmwareVersion,
         displayName: String? = nil,
+        isPrerelease: Bool = false,
         data: Data,
         source: Source = .imported,
         fileName: String? = nil
@@ -51,6 +56,7 @@ struct FirmwareImage: Equatable, Identifiable {
         self.id = id
         self.version = version
         self.displayName = displayName ?? version.shortVersion
+        self.isPrerelease = isPrerelease
         self.data = data
         self.source = source
         self.fileName = fileName
@@ -76,6 +82,7 @@ struct FirmwareImage: Equatable, Identifiable {
             self.init(
                 version: FirmwareVersion(parsing: numeric) ?? FirmwareVersion(major: 0, minor: 0, patch: 0, build: 0),
                 displayName: string,
+                isPrerelease: string.contains("-"),
                 data: Data(repeating: 0xAB, count: byteCount),
                 source: source,
                 fileName: nil

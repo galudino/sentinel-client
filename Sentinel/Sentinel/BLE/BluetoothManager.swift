@@ -69,8 +69,9 @@ final class BluetoothManager: BluetoothCentral, @unchecked Sendable {
 
     // MARK: Scanning
 
-    /// Start scanning for sentinel peripherals, filtered to the known service
-    /// UUIDs. Idempotent: a second call replaces the running scan.
+    /// Start scanning for sentinel peripherals, filtered to the single service
+    /// the firmware advertises — the System UUID (firmware #67). Idempotent: a
+    /// second call replaces the running scan.
     func scanForPeripherals() async throws {
         try await central.waitUntilReady()
         stopScanTask()
@@ -79,7 +80,7 @@ final class BluetoothManager: BluetoothCentral, @unchecked Sendable {
         emit(.scan, "Scan started")
 
         let stream = try await central.scanForPeripherals(
-            withServices: SentinelServiceUUID.cbuuids
+            withServices: SentinelServiceUUID.advertisedForScan
         )
         scanTask = Task { [weak self] in
             for await scanData in stream {
@@ -164,6 +165,28 @@ final class BluetoothManager: BluetoothCentral, @unchecked Sendable {
         return peer
     }
 
+    /// Reconnect to a peripheral after a DFU reboot (#22). The device self-reset on
+    /// `Verify`, so its previous handle is stale: rescan until the same identity
+    /// re-advertises (bounded by ``reconnectScanTimeout``), then connect through the
+    /// normal path. Falls back to CoreBluetooth's retained set if the rescan window
+    /// elapses without a fresh advertisement.
+    func reconnect(peripheralID: UUID, name: String? = nil) async throws -> ConnectedPeer {
+        emit(.connection, "Reconnecting after update", peripheralID: peripheralID)
+        try await scanForPeripherals()
+
+        let deadline = Date.now.addingTimeInterval(reconnectScanTimeout)
+        while Date.now < deadline, !discoveredPeripherals.contains(where: { $0.id == peripheralID }) {
+            try? await Task.sleep(for: .milliseconds(300))
+        }
+        try? await stopScan()
+
+        return try await connect(peripheralID: peripheralID, name: name)
+    }
+
+    /// How long ``reconnect(peripheralID:name:)`` waits for the rebooted peripheral
+    /// to re-advertise before falling back to the retained set.
+    private var reconnectScanTimeout: TimeInterval { 30 }
+
     /// Abort an in-flight connect (user cancel / timeout, #13): cancel the pending
     /// CoreBluetooth connection for the peripheral and drop back to disconnected.
     func cancelConnect(peripheralID: UUID) async {
@@ -187,8 +210,8 @@ final class BluetoothManager: BluetoothCentral, @unchecked Sendable {
     }
 
     private func resolvePeripheral(_ id: UUID) throws -> Peripheral {
-        if let item = discoveredPeripherals.first(where: { $0.id == id }) {
-            return item.peripheral
+        if let item = discoveredPeripherals.first(where: { $0.id == id }), let peripheral = item.peripheral {
+            return peripheral
         }
         if let retrieved = central.retrievePeripherals(withIdentifiers: [id]).first {
             return retrieved
@@ -218,6 +241,20 @@ enum BluetoothManagerError: Error, Equatable {
     /// retained by CoreBluetooth.
     case unknownPeripheral(UUID)
 }
+
+#if DEBUG
+    extension BluetoothManager {
+        /// A manager pre-seeded with synthetic discovered peripherals, for SwiftUI
+        /// previews of `PeripheralScanView` on the simulator (which has no BLE).
+        /// The paired scan view must skip its real scan (see its preview init) or
+        /// this seeded list would be cleared.
+        static func preview(discovered: [PeripheralScanItem]) -> BluetoothManager {
+            let manager = BluetoothManager()
+            manager.discoveredPeripherals = discovered
+            return manager
+        }
+    }
+#endif
 
 // MARK: - Event fan-out
 

@@ -31,6 +31,14 @@ final class MockBluetoothCentral: BluetoothCentral, @unchecked Sendable {
         return ConnectedPeer(id: peripheralID, name: name)
     }
 
+    private(set) var reconnectCount = 0
+
+    func reconnect(peripheralID: UUID, name: String?) async throws -> ConnectedPeer {
+        reconnectCount += 1
+        if shouldFailConnect { throw MockCentralError.connectFailed }
+        return ConnectedPeer(id: peripheralID, name: name)
+    }
+
     func cancelConnect(peripheralID: UUID) async {
         cancelledPeerIDs.append(peripheralID)
     }

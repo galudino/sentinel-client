@@ -25,6 +25,21 @@ struct PeripheralScanView: View {
     /// Set when a scan attempt fails; categorized from the central's state.
     @State private var unavailable: BluetoothUnavailableReason?
 
+    /// When true, `.task` / `.onChange` skip the real scan — previews seed state
+    /// directly (the simulator has no BLE). Always `false` in the shipping app.
+    private var isPreview = false
+
+    init() {}
+
+    #if DEBUG
+        /// Preview-only: render a fixed unavailable state, or (when `nil`) the
+        /// seeded scan list / empty state from an injected `BluetoothManager.preview`.
+        init(previewUnavailable: BluetoothUnavailableReason?) {
+            _unavailable = State(initialValue: previewUnavailable)
+            isPreview = true
+        }
+    #endif
+
     var body: some View {
         Group {
             if let unavailable {
@@ -41,8 +56,12 @@ struct PeripheralScanView: View {
                 Button("Re-scan", systemImage: "arrow.clockwise") { startScan() }
             }
         }
-        .task { startScan() }
+        .task {
+            guard !isPreview else { return }
+            startScan()
+        }
         .onChange(of: scenePhase) { _, phase in
+            guard !isPreview else { return }
             switch phase {
             case .active: startScan()
             default: Task { try? await bluetoothManager.stopScan() }
@@ -154,10 +173,45 @@ enum BluetoothUnavailableReason {
     }
 }
 
-#Preview {
-    NavigationStack {
-        PeripheralScanView()
+#if DEBUG
+    /// Renders a scan view for a preview scenario: a fixed unavailable reason, or a
+    /// seeded discovered list (skipping the real, BLE-less simulator scan).
+    private func scanPreview(
+        unavailable: BluetoothUnavailableReason? = nil,
+        discovered: [PeripheralScanItem] = []
+    ) -> some View {
+        let manager = BluetoothManager.preview(discovered: discovered)
+        return NavigationStack {
+            PeripheralScanView(previewUnavailable: unavailable)
+        }
+        .environment(AppRouter(bluetoothManager: manager))
+        .environment(manager)
     }
-    .environment(AppRouter(bluetoothManager: BluetoothManager()))
-    .environment(BluetoothManager())
-}
+
+    // The real simulator behavior — no BLE hardware.
+    #Preview("Bluetooth unavailable") {
+        scanPreview(unavailable: .unsupported)
+    }
+
+    // Scanning, nothing found.
+    #Preview("No devices found") {
+        scanPreview(discovered: [])
+    }
+
+    // A single Sentinel device.
+    #Preview("One Sentinel device") {
+        scanPreview(discovered: [
+            PeripheralScanItem(previewName: "Sentinel", rssi: -48, lastUpdated: .now.addingTimeInterval(-2))
+        ])
+    }
+
+    // A mix — Sentinel + other nearby devices.
+    #Preview("Mixed devices nearby") {
+        scanPreview(discovered: [
+            PeripheralScanItem(previewName: "Sentinel", rssi: -47, lastUpdated: .now.addingTimeInterval(-1)),
+            PeripheralScanItem(previewName: "Sentinel-2F1A", rssi: -66, lastUpdated: .now.addingTimeInterval(-5)),
+            PeripheralScanItem(previewName: "Kitchen Thermostat", rssi: -79, lastUpdated: .now.addingTimeInterval(-9)),
+            PeripheralScanItem(previewName: nil, rssi: -90, lastUpdated: .now.addingTimeInterval(-14))
+        ])
+    }
+#endif

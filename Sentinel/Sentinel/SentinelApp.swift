@@ -16,6 +16,9 @@ struct SentinelApp: App {
     /// `init()`). More arrive as the BLE layer (#8) and stores (#23) land.
     @State private var bluetoothManager: BluetoothManager
     @State private var router: AppRouter
+    @State private var pairedPeerStore: PairedPeerStore
+    @State private var appPreferences: AppPreferences
+    @State private var importedFirmwareStore: ImportedFirmwareStore
 
     /// Whether the launch splash (#26) has finished. Once true, the scene swaps
     /// `SplashView` for `RootView` (the AppRouter-driven state machine, #7).
@@ -24,6 +27,9 @@ struct SentinelApp: App {
     init() {
         let bluetoothManager = BluetoothManager()
         self.bluetoothManager = bluetoothManager
+        pairedPeerStore = PairedPeerStore()
+        appPreferences = AppPreferences()
+        importedFirmwareStore = ImportedFirmwareStore()
 
         // `AppRouter` depends on the manager, so build it once the independent
         // object exists.
@@ -32,13 +38,19 @@ struct SentinelApp: App {
 
     var body: some Scene {
         WindowGroup {
-            if hasSplashed {
-                RootView()
-                    .environment(bluetoothManager)
-                    .environment(router)
-            } else {
-                SplashView(onComplete: { hasSplashed = true })
+            Group {
+                if hasSplashed {
+                    RootView()
+                        .environment(bluetoothManager)
+                        .environment(router)
+                        .environment(pairedPeerStore)
+                        .environment(appPreferences)
+                        .environment(importedFirmwareStore)
+                } else {
+                    SplashView(onComplete: { hasSplashed = true })
+                }
             }
+            .preferredColorScheme(appPreferences.theme.colorScheme)
         }
     }
 }

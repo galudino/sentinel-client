@@ -59,11 +59,11 @@ enum MainTab: String, CaseIterable, Identifiable {
 
     var systemImage: String {
         switch self {
-        case .home: "house.fill"
-        case .logs: "list.bullet.rectangle"
-        case .snapshots: "camera.viewfinder"
-        case .device: "cpu.fill"
-        case .settings: "gearshape.fill"
+        case .home: "sensor.fill"
+        case .logs: "list.bullet.indent"
+        case .snapshots: "square.stack.3d.down.right.fill"
+        case .device: "info.circle.fill"
+        case .settings: "gearshape.2.fill"
         }
     }
 }
@@ -167,8 +167,21 @@ final class AppRouter {
     /// The link dropped (from any non-scanning state) — return to `.scanning`,
     /// releasing the ``ConnectedPeer``. Deliberately does **not** reset
     /// ``selectedTab``, so a reconnect lands the user back on the same tab.
+    ///
+    /// Use this for an *involuntary* drop (the device went away). For a
+    /// user-initiated disconnect that should also tear down the BLE link, use
+    /// ``disconnect()``.
     func didDisconnect() {
         guard state != .scanning else { return }
+        state = .scanning
+    }
+
+    /// User-initiated disconnect (Settings / Device tab): actively tear down the
+    /// BLE link, then return to `.scanning`. Only valid while `.connected`.
+    func disconnect() {
+        guard case let .connected(peer) = state else { return }
+        let central = bluetoothManager
+        Task { try? await central.disconnect(peer) }
         state = .scanning
     }
 
@@ -187,15 +200,22 @@ final class AppRouter {
         state = .connected(peer: peer)
     }
 
-    /// DFU finished — return to `.connected`.
-    ///
-    /// - Note: Seed behavior reuses the same peer. The real success path (#22)
-    ///   involves the device self-resetting and disconnecting, then a reconnect;
-    ///   this method will be refined to route through that handshake. Because
-    ///   ``selectedTab`` lives on the router, the tab is preserved across that
-    ///   round-trip regardless.
+    /// DFU finished but no *fresh* connection was handed back (previews / the
+    /// no-reconnector path) — fall back to the existing peer. Production completes
+    /// through ``firmwareUpdateReconnected(peer:)`` with the post-reboot peer.
+    /// Because ``selectedTab`` lives on the router, the tab is preserved across the
+    /// round-trip regardless.
     func firmwareUpdateCompleted() {
         guard case let .updatingFirmware(peer, _) = state else { return }
+        state = .connected(peer: peer)
+    }
+
+    /// DFU finished and the uploader (#22) reconnected to the device after its
+    /// self-reset — land `.connected` on the **new** `ConnectedPeer` (the old one's
+    /// link is gone), so the tabs bind to the live connection and read back the new
+    /// firmware version. Only valid while `.updatingFirmware`.
+    func firmwareUpdateReconnected(peer: ConnectedPeer) {
+        guard case .updatingFirmware = state else { return }
         state = .connected(peer: peer)
     }
 }

@@ -140,6 +140,23 @@ struct AppRouterTests {
         #expect(router.state == .scanning)
     }
 
+    @Test func userDisconnectTearsDownBLEAndReturnsToScanning() async {
+        let central = MockBluetoothCentral()
+        let router = AppRouter(bluetoothManager: central)
+        let id = UUID()
+        router.beginConnect(peripheralID: id)
+        for _ in 0 ..< 1000 {
+            if case .connected = router.state { break }
+            await Task.yield()
+        }
+        router.disconnect()
+        #expect(router.state == .scanning)
+        for _ in 0 ..< 1000 where central.disconnectedPeerIDs.isEmpty {
+            await Task.yield()
+        }
+        #expect(central.disconnectedPeerIDs == [id])
+    }
+
     @Test func disconnectWhileScanningIsNoOp() {
         let router = AppRouter(bluetoothManager: MockBluetoothCentral())
         router.didDisconnect()

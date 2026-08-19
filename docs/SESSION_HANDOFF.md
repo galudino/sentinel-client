@@ -20,11 +20,177 @@ the architecture docs rather than letting them accumulate here.
 
 ---
 
-**Last updated:** 2026-08-17 (**#8–#12 all done + closed** — foundational BLE +
-model + first view; each squash-merged to `develop`, pre-squash tips tagged
-`NN-slug-history`). Firmware **#6 / #34 / #36 are CLOSED**, so #9/#10/#11 are no
-longer blocked — this session sourced the real UUIDs + record layouts from the
-firmware repo (no client invention):
+**Last updated:** 2026-08-18 (session 3) — **#20 FirmwareSelectionView done →
+DFU trio (20/21/22) complete.** On branch `20-firmware-selection-view` off
+`develop`, **not committed** (maintainer will validate the DFU on a physical board
+first, then we run the tag/commit routine and merge `develop → main`). The DFU
+`model`+`engine` (#21/#22) is already on `develop` (squash `f54ef2a`, granular
+history at tag `22-dfu-ota-uploader-history`). Build + lint clean; **7 new unit
+tests green** (file-name parse, recommend logic, and an integration test proving
+the bundled `.bin`s ship + parse) on top of the prior 22.
+- **Bundled catalog** — two real signed MCUBoot images ship under
+  `Sentinel/Sentinel/Resources/Firmware/`: `sentinel-firmware_1.0.0.bin`
+  (rollback) + `sentinel-firmware_1.0.1-test.bin` (newest/recommended). Loaded by
+  `FirmwareCatalog` (parses `sentinel-firmware_<ver>[-label].bin`; `-test` is a
+  display label, numeric version is `1.0.1`). "Latest" = newest bundled until S3
+  (Phase IV / #32) becomes a source — `recommended(installed:among:)` is
+  source-agnostic.
+- **Files import** — `ImportedFirmwareStore` (`@Observable`, injected app-wide)
+  copies a picked `.bin` into `Documents/ImportedFirmware/`, persists across
+  launches, lists newest-first; `FirmwareSelectionView` uses `.fileImporter`.
+- **`FirmwareSelectionView` (#20)** — pushed from DeviceView → "Update Firmware…":
+  installed card, recommended card (Δ + "Update available"), "Other versions"
+  disclosure (bundled + imported, badged newer/older/installed, size, source,
+  swipe-to-delete imports), import button, confirm → `router.startFirmwareUpdate`.
+- **Real update-available signal** — `MainTabView` now computes
+  `firmwareUpdateAvailable` (device version vs recommended) on connect, driving
+  the Device badge + Home banner (was a hardcoded `false`).
+- **DFU pacing fix (important for hardware):** OTA data chunks now write **with
+  response** (`OTAService.writeData`). AsyncBluetooth does **not** pace
+  `.withoutResponse` writes — it fires and synthesizes completion immediately
+  (Peripheral.swift:161) — so streaming a 322 KB image that way overruns the
+  controller FIFO and drops chunks. Ack-per-chunk is #22's intended "write-ack =
+  flow control" and keeps the transfer intact (~<60 s at BLE speeds).
+- **Post-DFU confirm relaxed to `major.minor.patch`** (`FirmwareVersion.sameRelease`)
+  — a filename-derived target carries `build == 0` while the device may report a
+  real build for the same release.
+- **⚠️ Still hardware-unverified** — the sim has no BLE, so the live
+  upload+reconnect path (and the pacing fix) can only be proven on a real
+  CYBLE-416045. That's the maintainer's next step before commit.
+
+**Last updated:** 2026-08-18 (later session) — **DFU engine + flow done: #22
+OTAUploader + #21 FirmwareUpdateView + the #20 model pieces they need.** On branch
+`22-dfu-ota-uploader` off `develop` (not yet squash-merged). Build + lint clean;
+**22 new unit tests green** (uploader transition table, CRC32 vectors, version
+ordering) on top of the existing suite.
+- **`OTAUploader` (#22)** — `@MainActor @Observable` engine for the Infineon **OTA
+  FW Upgrade Service** handshake: enable CP indications → Prepare → Start(size) →
+  chunked Control-Data (chunk = **MTU−3**, never hardcoded 244; CRC32 folded
+  per-chunk) → Verify(crc32) → **device self-reset+disconnect = success** →
+  reconnect → read `SystemService` firmware version → confirm target → `.complete`.
+  Decoded status strings on any non-`ok`; cancel honoured through `.uploading`,
+  no-op from `.validating` on (point of no return). New files under `BLE/DFU/`:
+  `OTAUploader.swift`, `CRC32.swift` (zlib/PNG, incremental), `FirmwareReconnector.swift`.
+- **`FirmwareUpdateView` (#21)** — austere full-screen takeover (no tab bar);
+  progress ring + phase text bound to `uploader.state`/`progressFraction`;
+  confirm-to-cancel dialog; "Done" hands the **reconnected** peer to the router.
+  Five `#if DEBUG` phase previews via a frozen `OTAUploader.preview(_:progress:)`.
+- **#20 model pieces** (the shared bits #21/#22 require; **full selection UI still
+  deferred to #20**): `FirmwareImage` now carries `version: FirmwareVersion` + image
+  `data` + `source`; `FirmwareVersion` gained `Comparable` + `init(parsing:)`. A
+  `#if DEBUG` string init keeps old `FirmwareImage(version: "1.1.0")` call sites
+  working; non-DEBUG `.placeholder()` backs the DeviceView "Update Firmware…" seed.
+- **Reconnect seam (deliberate deviation, documented in-code):** the uploader owns
+  the whole state machine incl. `.reconnecting`/`.verifying` via an injected
+  `FirmwareReconnector`, so the reconnect tail is unit-testable with a mock (no
+  hardware). Added `reconnect(peripheralID:name:)` to `BluetoothCentral`
+  (`BluetoothManager` rescans then connects); `AppRouter.firmwareUpdateReconnected(peer:)`
+  swaps `.updatingFirmware → .connected` onto the **fresh** peer.
+- **Concurrency notes:** CP status reads go through a `nonisolated StatusReader`
+  (an actor-isolated stored `AsyncIterator` can't be `next()`-ed across `await`);
+  `FirmwareVersion` is now fully `nonisolated` so its `Equatable` is usable from the
+  nonisolated `OTAError`. Per-chunk write pacing relies on AsyncBluetooth's
+  write-ack; explicit per-chunk timeout left as a Phase-I nicety.
+- **On-hardware DFU is unverified** — the sim has no BLE, so the live upload +
+  reconnect path can only be exercised on a real CYBLE-416045. Mocks cover the
+  logic end-to-end.
+
+**Last updated:** 2026-08-18 — **#15 HomeView + #16 LogsView done; scan narrowed
+to the advertised System UUID.** All on `develop` (linear, not pushed):
+- **`6a9314f` BLE scan filter (fw #67):** `scanForPeripherals` now filters on the
+  single **advertised** service — `SentinelServiceUUID.advertisedForScan =
+  [.system]` — since the board advertises only the System 128-bit UUID (firmware
+  #67, fixed same day on the firmware `develop`). Post-connect `discoverServices`
+  still walks the full `cbuuids` contract. Build + unit tests green.
+- **`6a91f9d` #15 HomeView + #16 LogsView:**
+  - **#15 HomeView** — Apple-Health-Summary-style: BME280 ambient hero card
+    (T/H/P), 24 h Swift-Charts temperature trend (min/max/avg), DS3231 time &
+    clock, firmware-update banner. Unit-aware via `AppPreferences`. Leaf view
+    taking `any *Service`; 4 preview states (live / empty / update / °F·inHg).
+    "Show all environmental data" pushes a lightweight snapshot list (rich
+    per-section charts are deliberately deferred per the issue).
+  - **#16 LogsView** — System Event Log browser: scrollable filter chips
+    (All/Boot/Firmware/BLE/Faults/POST/Other), day-sectioned most-recent-first
+    list via the `SystemEventRecord` display API (#11), per-variant `EventDetailView`
+    (typed fields + raw bytes for `.unknown`). Leaf view taking
+    `any SystemEventLogService`.
+  - `MainTabView` now injects the per-service clients (leaf-view convention).
+
+**⏭️ PICK UP HERE (next session), in the maintainer's stated order:**
+1. **#17 SnapshotLoggingView** — *deliberately deferred to its own session:* it is
+   not a single view but a **generic snapshot-logging + charting + export
+   subsystem** (Snapshot protocol, type-erased field/value system, data providers,
+   capture sessions), a faithful port of a proven prior design that lives in
+   another project (**no in-repo code to port from yet**). Sized for a dedicated
+   session per the ~1-issue-per-session cadence; the one genuinely new problem is
+   chart performance on long (30–60 min+) capture sessions.
+2. **#18 DeviceView** (device admin + GATT explorer) — more self-contained;
+   good candidate if #17 is postponed.
+3. **#20 FirmwareSelectionView** — the DFU *onboarding* view is all that's left of
+   the trio: bundled-image catalog, Files/`.bin` import (persisted to Documents),
+   recommended-image card, and pushing to `FirmwareUpdateView`. The model + engine
+   it feeds (`FirmwareImage` bytes/version/source, `FirmwareVersion` compare/parse,
+   `OTAUploader`) are **done** this session; #20 just needs the picker UI + real
+   `firmwareUpdateAvailable` signal that #14's badge/banner already consume.
+   **#21 / #22 are done.**
+4. **#25 / #34** (debug output stream) last.
+
+> **DFU trio status:** #21 (`FirmwareUpdateView`) + #22 (`OTAUploader`) landed this
+> session on `22-dfu-ota-uploader`, along with the #20 *model* pieces. Remaining #20
+> work = the selection view only. On-hardware validation of the live upload+reconnect
+> still pending a physical board.
+
+**Note (firmware CI):** the maintainer asked whether CI publishes firmware
+releases — it does **not** (only the Pages/Doxygen workflow exists). That's
+firmware **#60** (Phase II); investigation was cataloged to that issue and
+deferred. Not a client concern.
+
+**Last updated:** 2026-08-17 (**#8–#14 all done + closed**, and **`develop` merged
+to `main`** — merge commit `784a292`; not pushed). Foundational BLE + models + the
+scan/connect/tabs flow. Firmware **#6 / #34 / #36 are CLOSED**, so #9/#10/#11 were
+sourced from the firmware repo (no client invention). Highlights beyond #8–#12:
+- **#13 ConnectingView** — presentational (router owns the connect); added
+  `.connectFailed` state + a **15 s timeout** (`withThrowingTimeout`) + cancel /
+  retry / dismiss intents + `BluetoothCentral.cancelConnect`. Phases from the live
+  `ConnectionState`.
+- **#14 MainTabView** — the 5-tab shell (Home/Logs/Snapshots/Device/Settings), each
+  tab stubbed under `Views/Tabs/` (fleshed out by #15–#19); Device badge + Home
+  banner driven by `firmwareUpdateAvailable` (#20 wires the real signal).
+- **#23 PairedPeerStore + AppPreferences** — UserDefaults-backed, `@Observable`,
+  versioned keys, injected app-wide; `register(id:name:)` uses peripheral identity;
+  `FirmwareVersion` gained `Codable`.
+- **#19 SettingsView** — real Form: paired devices (forget / forget-all), connection
+  (identifier + Disconnect), Appearance/Units/Notifications/Developer bound to
+  `AppPreferences`, About. Added **`AppRouter.disconnect()`** (user-initiated BLE
+  teardown, vs the involuntary-drop `didDisconnect()`).
+- Added `Sentinel.xctestplan` (wired into the scheme).
+- **Follow-ups (post-#19):** new tab icon set; **register-on-connect** wired
+  (`RootView` `.task(id: peer.id)` → `PairedPeerStore.register`, so trusted devices
+  now populate); **`PeripheralScanView` preview scenarios** — see the convention
+  below.
+
+### Preview convention (do this for every view going forward)
+
+The simulator has **no BLE**, so live-data views render empty/unavailable on the
+preview canvas. Demonstrate real scenarios anyway via a **`#if DEBUG` preview
+seam** (pattern borrowed from `voomair-client-ios`'s `#if targetEnvironment(simulator)`
+swap, but scoped per-preview so the real path still previews):
+- Give types that wrap a non-constructible SDK object a `#if DEBUG` synthetic init
+  (e.g. `PeripheralScanItem(previewName:…)` — `peripheral` is now optional).
+- Give the owning `@Observable` a `#if DEBUG static func preview(…)` that seeds
+  its state (e.g. `BluetoothManager.preview(discovered:)`).
+- Give the view a `#if DEBUG init(preview…:)` that seeds `@State` and sets an
+  `isPreview` flag so `.task`/`.onChange` **skip real hardware calls**.
+- Provide **multiple named `#Preview`s** covering the meaningful states (empty, one,
+  many, error). `PeripheralScanView` is the reference: Bluetooth-unavailable /
+  no-devices / one Sentinel / mixed. **#15 HomeView etc. should follow this** using
+  the `Mock*Service` types (already exist) for live/empty/streaming states.
+
+**Flow is now real end-to-end:** `PeripheralScanView → ConnectingView → MainTabView`
+works on hardware (connect + discovery are real); tab *contents* are stubs until
+#15–#19. **57 unique tests green.**
+
+Earlier this session (#8–#12), sourced from firmware:
 - **#9 GATT contract** — `GATTContract.swift`: real 128-bit UUIDs transcribed from
   firmware `cycfg_gatt_db.h` (one `SentinelServiceUUID` + per-service char enums);
   `PlatformID`/`VendorID`, `FirmwareVersion` (5-byte packed, hand-decoded),
@@ -193,6 +359,18 @@ and `SystemEventRecord` (#11). Foundation status:
 > Sentinel service UUIDs — the iOS simulator has no BLE (it renders the
 > Bluetooth-unavailable path, as verified for #12).
 
+> ⚠️ **Discovery blocked on firmware fix — [sentinel-firmware #67](https://github.com/galudino/sentinel-firmware/issues/67).**
+> The board currently advertises only its name + the 16-bit **Battery** UUID
+> (`0x180F`), **not** any custom 128-bit Sentinel service UUID — so a service-filtered
+> scan (`scanForPeripherals(withServices:)`) can't discover it (name-only scan does).
+> Advertised service UUIDs are separate from the GATT DB. Firmware #67 will advertise
+> the **System** UUID (primary adv) + name (scan response) + re-advertise on disconnect.
+> **Client impact: none required** — CoreBluetooth's filter is OR-semantics and
+> `System` is already in the 8-UUID filter, so it works once firmware advertises it.
+> **Optional follow-up:** narrow `PeripheralScanView`'s scan from
+> `SentinelServiceUUID.cbuuids` (all 8) to just the advertised **System** UUID for
+> selectivity, once #67 lands.
+
 ---
 
 ## Repo setup to-dos
@@ -210,20 +388,33 @@ and `SystemEventRecord` (#11). Foundation status:
 
 ## Next session — recommended starting point
 
-The BLE foundation + first view are done. Good next picks, in rough order:
+**Start here: #15 HomeView** (the flagship tab — live sensor data). Everything it
+needs exists:
+- `peer.bme280` (`BME280Service`) → `readAmbientSample()` / `ambientSampleNotifications()`
+  → `BME280Sample` (0.01 °C / 0.01 % / Pa, with `temperatureCelsius` etc.). Enable
+  the stream with `setNotifying(true)`.
+- Apply the user's unit prefs via `@Environment(AppPreferences.self)`
+  (`temperatureUnit.convert(celsius:)`, `pressureUnit.convert(hectopascals:)`).
+- Charts: `import Charts` (Swift Charts); the current `HomeView` stub already has the
+  firmware-update banner + `chart.xyaxis.line`→`sensor.fill` placeholder to replace.
+- **Previews are mandatory** (see the Preview convention above): inject
+  `MockBME280Service` for live/steady/empty states — `HomeView` should take
+  `any BME280Service` in its init so a leaf preview needs no `ConnectedPeer`.
 
-- **#23 PairedPeerStore** (recommended, small, no deps) — UserDefaults-backed
-  trusted-peer registry; unblocks the #12 **Trusted devices** section (already
-  stubbed in `PeripheralRow`'s `trusted:` style).
-- **#13 ConnectingView** / **#14 MainTabView** / the tab leaf views — the connected
-  subtree. All the service clients + typed models they need now exist; leaf views
-  take `any <Chip>Service` and preview with the `Mock*Service` types.
-- **#25 DebugOutputStreamView** — merge the two event streams; unblocks the #12
-  Debug button.
-- **#18 DeviceView** — consumes the DIS UUIDs from #9 (DIS reads were deferred there).
+Then the rest of the tab content, same pattern:
+- **#16 LogsView** (`peer.systemEventLog` → `SystemEventRecord` display API),
+  **#17 SnapshotLoggingView** (`peer.snapshotHistory`/`snapshotStream` →
+  `DeviceSnapshot`), **#18 DeviceView** (`peer.system` + DIS reads from #9; GATT
+  explorer). All have `Mock*Service` types for previews.
+- **#25 DebugOutputStreamView** — merge `BluetoothManager.bluetoothEventStream()`
+  + on-device `DebugStreamService`; unblocks the #12 Debug button.
+- **#20 firmware selection** — provides the real `firmwareUpdateAvailable` signal
+  that #14's badge/banner already consume.
 
-Done and on `develop`: **#33**, **#26**, **#7**, **#8**, **#9**, **#10**, **#11**,
-**#12** (this session added #8–#12). Follow the git-flow in
+Done and on `develop` (and merged to `main`): **#33**, **#26**, **#7**, **#8**,
+**#9**, **#10**, **#11**, **#12**, **#13**, **#14**, **#19**, **#23** (this session
+added #8–#14, #19, #23 + the test plan + post-#19 follow-ups, and merged
+`develop`→`main`). Follow the git-flow in
 [`architecture/github-infrastructure.md`](architecture/github-infrastructure.md):
 branch off `develop`, tag the pre-squash tip (`NN-slug-history`), squash-merge, delete.
 

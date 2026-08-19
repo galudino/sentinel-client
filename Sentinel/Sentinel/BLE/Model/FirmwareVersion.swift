@@ -15,7 +15,7 @@ import Foundation
 /// - Note: Decoded **by hand**, not via ``TriviallyCopyable`` — a Swift struct of
 ///   `UInt8 · UInt8 · UInt8 · UInt16` pads `build` to a 2-byte boundary (6 bytes),
 ///   which would not match the packed 5-byte wire layout.
-nonisolated struct FirmwareVersion: Equatable, Sendable, Codable, CustomStringConvertible {
+nonisolated struct FirmwareVersion: Hashable, Sendable, Codable, CustomStringConvertible {
     let major: UInt8
     let minor: UInt8
     let patch: UInt8
@@ -49,6 +49,17 @@ extension FirmwareVersion {
 extension FirmwareVersion: Comparable {
     static func < (lhs: FirmwareVersion, rhs: FirmwareVersion) -> Bool {
         (lhs.major, lhs.minor, lhs.patch, lhs.build) < (rhs.major, rhs.minor, rhs.patch, rhs.build)
+    }
+}
+
+extension FirmwareVersion {
+    /// Same *release* (`major.minor.patch`), ignoring `build`. The post-DFU version
+    /// confirm (#22) uses this rather than full equality: a filename-derived target
+    /// (e.g. `1.0.1-test`) carries `build == 0`, while the device may report a real
+    /// build number for the same release — a release match is the correct success
+    /// signal.
+    func sameRelease(as other: FirmwareVersion) -> Bool {
+        major == other.major && minor == other.minor && patch == other.patch
     }
 }
 

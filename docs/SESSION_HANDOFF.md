@@ -20,6 +20,36 @@ the architecture docs rather than letting them accumulate here.
 
 ---
 
+**Last updated:** 2026-08-19 (session 4) — **DFU trio #20/#21/#22 DONE, hardware-
+validated, released to `main`; issues closed + marked Done on the board.** The full
+OTA DFU works end-to-end on a real CYBLE-416045: bundled/imported firmware select →
+chunked upload (CRC32 verify) → MCUBoot swap → reconnect → version confirm → back
+to DeviceView (better than voomair's return-to-scan). All on `main`.
+- **Pacing fix that made it work on hardware:** OTA data chunks write **with
+  response** (`OTAService.writeData`) — AsyncBluetooth doesn't pace
+  `.withoutResponse` writes, so a 322 KB image overran the FIFO. Post-DFU confirm
+  matches on `major.minor.patch` (`FirmwareVersion.sameRelease`).
+- **Stock-firmware bundle (this session):** `Resources/Firmware/` now ships the
+  real signed **`sentinel-firmware_1.0.1.bin`** (recommended baseline / factory-
+  reset image; dropped 1.0.0 + the old 1.0.1-test) + **`sentinel-firmware_255.255.255-test.bin`**
+  (the 1.0.1 code signed at 255.255.255 so a test image can't be mistaken for a
+  real release). `FirmwareImage.isPrerelease` + `FirmwareCatalog` **exclude any
+  `-<label>` build from `recommended()`** and the badge/banner — test images stay
+  selectable for rollback/testing but are never auto-recommended. Keep this bundle
+  in sync with each firmware release (factory-reset intent).
+- **Firmware side:** sentinel-firmware **v1.0.1 released** (record-store resilience
+  fix — see that repo) with a GitHub Release + signed assets; the 1.0.1 `.bin` here
+  is that release's OTA image.
+
+**⏭️ PICK UP HERE (next session): tab content #15 / #16 / #17 / #18.** Current
+state — **#15 HomeView + #16 LogsView are already implemented** (may just need a
+review/close pass); the substantive remaining work is **#17 SnapshotLoggingView**
+(the generic snapshot-logging + charting + export subsystem — a dedicated session;
+chart perf on long captures is the one new problem) and **#18 DeviceView** (full
+device admin + GATT explorer; only the identity/health panel landed so far). All
+have `Mock*Service` types for previews; follow the preview convention below. #25
+DebugOutputStreamView is the remaining non-tab view.
+
 **Last updated:** 2026-08-18 (session 3) — **#20 FirmwareSelectionView done →
 DFU trio (20/21/22) complete.** On branch `20-firmware-selection-view` off
 `develop`, **not committed** (maintainer will validate the DFU on a physical board

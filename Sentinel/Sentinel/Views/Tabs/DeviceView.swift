@@ -46,9 +46,10 @@ struct DeviceView: View {
                         }
                     }
                     Button {
-                        // DFU entry seed — #20 makes this push FirmwareSelectionView;
-                        // #21/#22 own the actual update. Kept as-is until that session.
-                        router.startFirmwareUpdate(FirmwareImage(version: "1.1.0"))
+                        // DFU entry seed — #20 makes this push FirmwareSelectionView to
+                        // pick a real bundled/imported image; until then this launches
+                        // the #21/#22 flow with a synthetic placeholder image.
+                        router.startFirmwareUpdate(.placeholder())
                     } label: {
                         Label("Update Firmware…", systemImage: "arrow.up.circle")
                     }

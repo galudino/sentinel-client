@@ -52,7 +52,7 @@ struct RootView: View {
                     }
 
             case let .updatingFirmware(peer, image):
-                FirmwareUpdateView(image: image)
+                FirmwareUpdateView(peer: peer, image: image)
                     .environment(peer)
                     .transition(.opacity)
             }

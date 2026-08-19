@@ -20,6 +20,43 @@ the architecture docs rather than letting them accumulate here.
 
 ---
 
+**Last updated:** 2026-08-18 (later session) — **DFU engine + flow done: #22
+OTAUploader + #21 FirmwareUpdateView + the #20 model pieces they need.** On branch
+`22-dfu-ota-uploader` off `develop` (not yet squash-merged). Build + lint clean;
+**22 new unit tests green** (uploader transition table, CRC32 vectors, version
+ordering) on top of the existing suite.
+- **`OTAUploader` (#22)** — `@MainActor @Observable` engine for the Infineon **OTA
+  FW Upgrade Service** handshake: enable CP indications → Prepare → Start(size) →
+  chunked Control-Data (chunk = **MTU−3**, never hardcoded 244; CRC32 folded
+  per-chunk) → Verify(crc32) → **device self-reset+disconnect = success** →
+  reconnect → read `SystemService` firmware version → confirm target → `.complete`.
+  Decoded status strings on any non-`ok`; cancel honoured through `.uploading`,
+  no-op from `.validating` on (point of no return). New files under `BLE/DFU/`:
+  `OTAUploader.swift`, `CRC32.swift` (zlib/PNG, incremental), `FirmwareReconnector.swift`.
+- **`FirmwareUpdateView` (#21)** — austere full-screen takeover (no tab bar);
+  progress ring + phase text bound to `uploader.state`/`progressFraction`;
+  confirm-to-cancel dialog; "Done" hands the **reconnected** peer to the router.
+  Five `#if DEBUG` phase previews via a frozen `OTAUploader.preview(_:progress:)`.
+- **#20 model pieces** (the shared bits #21/#22 require; **full selection UI still
+  deferred to #20**): `FirmwareImage` now carries `version: FirmwareVersion` + image
+  `data` + `source`; `FirmwareVersion` gained `Comparable` + `init(parsing:)`. A
+  `#if DEBUG` string init keeps old `FirmwareImage(version: "1.1.0")` call sites
+  working; non-DEBUG `.placeholder()` backs the DeviceView "Update Firmware…" seed.
+- **Reconnect seam (deliberate deviation, documented in-code):** the uploader owns
+  the whole state machine incl. `.reconnecting`/`.verifying` via an injected
+  `FirmwareReconnector`, so the reconnect tail is unit-testable with a mock (no
+  hardware). Added `reconnect(peripheralID:name:)` to `BluetoothCentral`
+  (`BluetoothManager` rescans then connects); `AppRouter.firmwareUpdateReconnected(peer:)`
+  swaps `.updatingFirmware → .connected` onto the **fresh** peer.
+- **Concurrency notes:** CP status reads go through a `nonisolated StatusReader`
+  (an actor-isolated stored `AsyncIterator` can't be `next()`-ed across `await`);
+  `FirmwareVersion` is now fully `nonisolated` so its `Equatable` is usable from the
+  nonisolated `OTAError`. Per-chunk write pacing relies on AsyncBluetooth's
+  write-ack; explicit per-chunk timeout left as a Phase-I nicety.
+- **On-hardware DFU is unverified** — the sim has no BLE, so the live upload +
+  reconnect path can only be exercised on a real CYBLE-416045. Mocks cover the
+  logic end-to-end.
+
 **Last updated:** 2026-08-18 — **#15 HomeView + #16 LogsView done; scan narrowed
 to the advertised System UUID.** All on `develop` (linear, not pushed):
 - **`6a9314f` BLE scan filter (fw #67):** `scanForPeripherals` now filters on the
@@ -51,7 +88,19 @@ to the advertised System UUID.** All on `develop` (linear, not pushed):
    chart performance on long (30–60 min+) capture sessions.
 2. **#18 DeviceView** (device admin + GATT explorer) — more self-contained;
    good candidate if #17 is postponed.
-3. **DFU trio #20 / #21 / #22**, then **#25 / #34** (debug output stream) last.
+3. **#20 FirmwareSelectionView** — the DFU *onboarding* view is all that's left of
+   the trio: bundled-image catalog, Files/`.bin` import (persisted to Documents),
+   recommended-image card, and pushing to `FirmwareUpdateView`. The model + engine
+   it feeds (`FirmwareImage` bytes/version/source, `FirmwareVersion` compare/parse,
+   `OTAUploader`) are **done** this session; #20 just needs the picker UI + real
+   `firmwareUpdateAvailable` signal that #14's badge/banner already consume.
+   **#21 / #22 are done.**
+4. **#25 / #34** (debug output stream) last.
+
+> **DFU trio status:** #21 (`FirmwareUpdateView`) + #22 (`OTAUploader`) landed this
+> session on `22-dfu-ota-uploader`, along with the #20 *model* pieces. Remaining #20
+> work = the selection view only. On-hardware validation of the live upload+reconnect
+> still pending a physical board.
 
 **Note (firmware CI):** the maintainer asked whether CI publishes firmware
 releases — it does **not** (only the Pages/Doxygen workflow exists). That's

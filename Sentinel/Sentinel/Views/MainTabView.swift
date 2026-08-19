@@ -19,11 +19,14 @@ import SwiftUI
 struct MainTabView: View {
     @Environment(AppRouter.self) private var router
     @Environment(ConnectedPeer.self) private var peer
+    @Environment(ImportedFirmwareStore.self) private var importedStore
 
     /// Whether a newer firmware image is available — drives the Device-tab badge
-    /// and the Home banner. #20 wires the real check (bundled/imported image
-    /// version vs the device's running version); default `false` until then.
-    var firmwareUpdateAvailable = false
+    /// and the Home banner. Computed on connect (#20): the recommended image
+    /// (newest bundled/imported) vs the device's running version.
+    @State private var firmwareUpdateAvailable = false
+
+    init() {}
 
     var body: some View {
         @Bindable var router = router
@@ -57,8 +60,27 @@ struct MainTabView: View {
                 SettingsView()
             }
         }
+        .task(id: peer.id) { await refreshUpdateAvailability() }
+    }
+
+    /// Recompute ``firmwareUpdateAvailable`` from the device's running version vs
+    /// the newest available image (bundled + imported). A read failure (e.g. the
+    /// simulator's absent BLE) leaves the current value untouched.
+    private func refreshUpdateAvailability() async {
+        guard let installed = try? await peer.system.readFirmwareVersion() else { return }
+        let images = FirmwareCatalog.bundledImages() + importedStore.images
+        firmwareUpdateAvailable = FirmwareCatalog.recommended(installed: installed, among: images) != nil
     }
 }
+
+#if DEBUG
+    extension MainTabView {
+        /// Preview seam — seed the badge/banner without a live read.
+        init(firmwareUpdateAvailable: Bool) {
+            _firmwareUpdateAvailable = State(initialValue: firmwareUpdateAvailable)
+        }
+    }
+#endif
 
 #Preview("Connected") {
     MainTabView()
@@ -66,6 +88,7 @@ struct MainTabView: View {
         .environment(AppPreferences())
         .environment(ConnectedPeer(name: "Sentinel"))
         .environment(PairedPeerStore())
+        .environment(ImportedFirmwareStore())
 }
 
 #Preview("Firmware update available") {
@@ -74,4 +97,5 @@ struct MainTabView: View {
         .environment(AppPreferences())
         .environment(ConnectedPeer(name: "Sentinel"))
         .environment(PairedPeerStore())
+        .environment(ImportedFirmwareStore())
 }

@@ -11,41 +11,46 @@ import Foundation
 /// the `.updatingFirmware` state and hands to `FirmwareUpdateView` (#21), which
 /// streams ``data`` to the device via the OTA uploader (#22).
 ///
-/// Expanded past its #7 seed (which held only an id + a display string) to carry
-/// what the DFU actually needs: the **signed image bytes** (chunked to the
-/// negotiated MTU, CRC32'd for the `Verify` handshake) and the **target
+/// Carries what the DFU actually needs: the **signed MCUBoot image bytes** (chunked
+/// to the negotiated MTU, CRC32'd for the `Verify` handshake) and the **target
 /// ``FirmwareVersion``** (confirmed by reading the System service back after the
-/// device reboots). The full selection UI — bundled catalog + Files import +
-/// recommended-image logic — remains #20's job; this is the model both #20 and
-/// #21/#22 share.
+/// device reboots), plus a human ``displayName`` (e.g. `"1.0.1-test"`) that may
+/// carry a pre-release label the numeric version drops. Produced by
+/// ``FirmwareCatalog`` (bundled images) and ``ImportedFirmwareStore`` (Files
+/// imports); selected in `FirmwareSelectionView` (#20).
 struct FirmwareImage: Equatable, Identifiable {
     /// Where a selectable image came from — surfaced per-row in the #20 picker.
     enum Source: Equatable {
-        /// Shipped inside the app bundle (known-good test images).
+        /// Shipped inside the app bundle (known-good test/rollback images).
         case bundled
         /// Imported from Files / iCloud / AirDrop into the app's Documents dir.
         case imported
     }
 
     let id: UUID
-    /// The image's own version — the value the device should report after a
+    /// The image's own version — the release the device should report after a
     /// successful flash + reboot.
     let version: FirmwareVersion
+    /// Human display label — `"1.0.0"`, `"1.0.1-test"`, or an imported file's name
+    /// when its version can't be parsed. Defaults to the numeric short version.
+    let displayName: String
     /// The signed MCUBoot image bytes to upload.
     let data: Data
     let source: Source
-    /// Original file name, when imported — display only.
+    /// Original file name, when known — display + de-dup on import.
     let fileName: String?
 
     init(
         id: UUID = UUID(),
         version: FirmwareVersion,
+        displayName: String? = nil,
         data: Data,
         source: Source = .imported,
         fileName: String? = nil
     ) {
         self.id = id
         self.version = version
+        self.displayName = displayName ?? version.shortVersion
         self.data = data
         self.source = source
         self.fileName = fileName
@@ -55,36 +60,22 @@ struct FirmwareImage: Equatable, Identifiable {
     /// chunk count.
     var byteCount: Int { data.count }
 
-    /// Dotted display version without the build number, e.g. `"1.2.3"`.
-    var versionDisplay: String { version.shortVersion }
-}
-
-extension FirmwareImage {
-    /// A stand-in image for the Device tab's "Update Firmware…" seed until the real
-    /// selection flow (#20) supplies bundled/imported images. Synthetic bytes — it
-    /// exercises the #21 UI + #22 state machine but is not a real signed image, so
-    /// a live device will reject it at `Verify` (the intended, safe outcome).
-    static func placeholder(
-        version: FirmwareVersion = FirmwareVersion(major: 1, minor: 1, patch: 0, build: 0)
-    ) -> FirmwareImage {
-        FirmwareImage(
-            version: version,
-            data: Data(repeating: 0xAB, count: 64 * 1024),
-            source: .bundled,
-            fileName: "placeholder.bin"
-        )
-    }
+    /// The label shown wherever a version is presented (cards, progress view).
+    var versionDisplay: String { displayName }
 }
 
 #if DEBUG
     extension FirmwareImage {
         /// Convenience for tests/previews: build an image from a dotted version
-        /// string with synthetic bytes. Keeps the pre-expansion call sites
-        /// (`FirmwareImage(version: "1.1.0")`) working unchanged.
+        /// string with synthetic bytes. The string becomes the display label, so
+        /// `FirmwareImage(version: "1.1.0")` shows `1.1.0`.
         init(version string: String, byteCount: Int = 64 * 1024, source: Source = .bundled) {
+            // Parse just the numeric part so a pre-release label (e.g. "1.0.1-test")
+            // still yields version 1.0.1 while keeping the full string as the label.
+            let numeric = string.split(separator: "-", maxSplits: 1).first.map(String.init) ?? string
             self.init(
-                id: UUID(),
-                version: FirmwareVersion(parsing: string) ?? FirmwareVersion(major: 0, minor: 0, patch: 0, build: 0),
+                version: FirmwareVersion(parsing: numeric) ?? FirmwareVersion(major: 0, minor: 0, patch: 0, build: 0),
+                displayName: string,
                 data: Data(repeating: 0xAB, count: byteCount),
                 source: source,
                 fileName: nil

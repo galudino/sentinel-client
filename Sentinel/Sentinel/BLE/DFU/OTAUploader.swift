@@ -234,7 +234,7 @@ final class OTAUploader {
             }
             state = .verifying
             let running = try await verifySystem.readFirmwareVersion()
-            guard running == image.version else {
+            guard running.sameRelease(as: image.version) else {
                 throw OTAError.versionMismatch(expected: image.version, actual: running)
             }
 

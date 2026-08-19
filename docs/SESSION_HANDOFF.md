@@ -20,6 +20,44 @@ the architecture docs rather than letting them accumulate here.
 
 ---
 
+**Last updated:** 2026-08-18 (session 3) — **#20 FirmwareSelectionView done →
+DFU trio (20/21/22) complete.** On branch `20-firmware-selection-view` off
+`develop`, **not committed** (maintainer will validate the DFU on a physical board
+first, then we run the tag/commit routine and merge `develop → main`). The DFU
+`model`+`engine` (#21/#22) is already on `develop` (squash `f54ef2a`, granular
+history at tag `22-dfu-ota-uploader-history`). Build + lint clean; **7 new unit
+tests green** (file-name parse, recommend logic, and an integration test proving
+the bundled `.bin`s ship + parse) on top of the prior 22.
+- **Bundled catalog** — two real signed MCUBoot images ship under
+  `Sentinel/Sentinel/Resources/Firmware/`: `sentinel-firmware_1.0.0.bin`
+  (rollback) + `sentinel-firmware_1.0.1-test.bin` (newest/recommended). Loaded by
+  `FirmwareCatalog` (parses `sentinel-firmware_<ver>[-label].bin`; `-test` is a
+  display label, numeric version is `1.0.1`). "Latest" = newest bundled until S3
+  (Phase IV / #32) becomes a source — `recommended(installed:among:)` is
+  source-agnostic.
+- **Files import** — `ImportedFirmwareStore` (`@Observable`, injected app-wide)
+  copies a picked `.bin` into `Documents/ImportedFirmware/`, persists across
+  launches, lists newest-first; `FirmwareSelectionView` uses `.fileImporter`.
+- **`FirmwareSelectionView` (#20)** — pushed from DeviceView → "Update Firmware…":
+  installed card, recommended card (Δ + "Update available"), "Other versions"
+  disclosure (bundled + imported, badged newer/older/installed, size, source,
+  swipe-to-delete imports), import button, confirm → `router.startFirmwareUpdate`.
+- **Real update-available signal** — `MainTabView` now computes
+  `firmwareUpdateAvailable` (device version vs recommended) on connect, driving
+  the Device badge + Home banner (was a hardcoded `false`).
+- **DFU pacing fix (important for hardware):** OTA data chunks now write **with
+  response** (`OTAService.writeData`). AsyncBluetooth does **not** pace
+  `.withoutResponse` writes — it fires and synthesizes completion immediately
+  (Peripheral.swift:161) — so streaming a 322 KB image that way overruns the
+  controller FIFO and drops chunks. Ack-per-chunk is #22's intended "write-ack =
+  flow control" and keeps the transfer intact (~<60 s at BLE speeds).
+- **Post-DFU confirm relaxed to `major.minor.patch`** (`FirmwareVersion.sameRelease`)
+  — a filename-derived target carries `build == 0` while the device may report a
+  real build for the same release.
+- **⚠️ Still hardware-unverified** — the sim has no BLE, so the live
+  upload+reconnect path (and the pacing fix) can only be proven on a real
+  CYBLE-416045. That's the maintainer's next step before commit.
+
 **Last updated:** 2026-08-18 (later session) — **DFU engine + flow done: #22
 OTAUploader + #21 FirmwareUpdateView + the #20 model pieces they need.** On branch
 `22-dfu-ota-uploader` off `develop` (not yet squash-merged). Build + lint clean;

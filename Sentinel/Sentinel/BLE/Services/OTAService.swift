@@ -38,9 +38,12 @@ struct OTAServiceClient<Transport: BluetoothPeripheralTransport>: OTAService {
     }
 
     func writeData(_ chunk: Data) async throws {
-        // Data streams without response for throughput; the control plane gates
-        // correctness (#22).
-        try await transport.write(chunk, characteristic: data, ofService: service, type: .withoutResponse)
+        // Write **with response** so each chunk awaits its ATT ack before the next
+        // — the write-ack is the DFU's flow control (#22). AsyncBluetooth does not
+        // pace `.withoutResponse` writes (it fires and synthesizes completion
+        // immediately), so streaming a full image that way overruns the controller
+        // FIFO and drops chunks; the ack-per-chunk pacing keeps the transfer intact.
+        try await transport.write(chunk, characteristic: data, ofService: service, type: .withResponse)
     }
 
     func setControlPointNotifying(_ enabled: Bool) async throws {

@@ -45,11 +45,8 @@ struct DeviceView: View {
                             Text("—").foregroundStyle(.secondary)
                         }
                     }
-                    Button {
-                        // DFU entry seed — #20 makes this push FirmwareSelectionView to
-                        // pick a real bundled/imported image; until then this launches
-                        // the #21/#22 flow with a synthetic placeholder image.
-                        router.startFirmwareUpdate(.placeholder())
+                    NavigationLink {
+                        FirmwareSelectionView(peer: peer, installedVersion: firmwareVersion)
                     } label: {
                         Label("Update Firmware…", systemImage: "arrow.up.circle")
                     }
@@ -109,6 +106,7 @@ struct DeviceView: View {
     #Preview("Running 1.0.0") {
         DeviceView(peer: ConnectedPeer(name: "Sentinel-A1B2"), system: MockSystemService())
             .environment(AppRouter(bluetoothManager: BluetoothManager()))
+            .environment(ImportedFirmwareStore())
     }
 
     #Preview("After DFU → 1.0.1") {
@@ -117,5 +115,6 @@ struct DeviceView: View {
             system: MockSystemService(firmwareVersion: FirmwareVersion(major: 1, minor: 0, patch: 1, build: 17))
         )
         .environment(AppRouter(bluetoothManager: BluetoothManager()))
+        .environment(ImportedFirmwareStore())
     }
 #endif

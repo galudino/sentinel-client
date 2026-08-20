@@ -106,7 +106,7 @@ struct SettingsView: View {
             Button(role: .destructive) {
                 router.disconnect()
             } label: {
-                Label("Disconnect", systemImage: "wifi.slash")
+                Label("Disconnect", systemImage: "antenna.radiowaves.left.and.right.slash")
             }
         }
     }

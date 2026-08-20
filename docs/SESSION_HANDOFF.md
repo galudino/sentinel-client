@@ -20,6 +20,85 @@ the architecture docs rather than letting them accumulate here.
 
 ---
 
+**Last updated:** 2026-08-19 (session 5) — **#18 DeviceView DONE: the Device tab
+is now the full navigation hub + GATT Explorer.** On branch `18-device-view` off
+`develop`, **not committed** (awaiting the maintainer's review, then the
+tag/squash-merge routine). Build + lint clean; **9 new unit tests green**
+(`CharacteristicCatalogTests`) on top of the prior suite. **#15 HomeView + #16
+LogsView confirmed complete** (build clean, no changes needed). **#17
+SnapshotLoggingView is still the stub** — deliberately left for its own dedicated
+session (it's the generic snapshot-logging + charting + export subsystem; chart
+perf on long captures is the one new problem).
+- **DeviceView is now a hub, not a flat list** — `DeviceCategory` enum
+  (`Model/DeviceCategory.swift`) drives it: **compact (iPhone)** = `List` +
+  `navigationDestination`; **regular (iPad/macOS)** = `NavigationSplitView`
+  (sidebar + detail). Adding a subview = a case + a `detailView` branch. Phase II
+  rows (`bme280Config`, `ds3231Config`) show disabled with "Coming in Phase II".
+- **Subviews** (`Views/Tabs/Device/`): `DeviceInfoView` (identity/health/link +
+  pushed `SerialNumberEditView`), `TimeAndDateView`, `StorageView`,
+  `GATTExplorerView` → `ServiceCharacteristicsView` → `CharacteristicDetailView`.
+  The Firmware row still pushes `FirmwareSelectionView` (#20) and shows the
+  version + an update dot driven by `firmwareUpdateAvailable` (now passed from
+  `MainTabView`). The **Debug Output** row is a placeholder `ContentUnavailableView`
+  until **#25** lands.
+- **GATT Explorer** is catalog-driven: `CharacteristicCatalog`
+  (`BLE/UUIDs/CharacteristicCatalog.swift`) has one `CharacteristicDescriptor` per
+  characteristic in #9 (name, `GATTDataType`, LSB unit, `CBCharacteristicProperties`).
+  Detail view reads/writes/notifies via the **raw** `BluetoothPeripheralTransport`
+  (not the `*ServiceClient` APIs), with a Dec/Hex/Oct/UTF-8/Raw format toggle + a
+  typed write editor. Char UUID enums are now `CaseIterable`; the new test asserts
+  the catalog stays 1:1 with the contract (build fails if a characteristic is added
+  without a descriptor).
+- **New service writes (per maintainer decision this session):**
+  `DS3231Service.writeUnixTime` (backs "Sync from iPhone") and
+  `SystemService.writeSerialNumber` (backs the serial editor) — **overrides the
+  earlier `project_rtc_time_design` "defer BLE time-set to firmware #6" note.** The
+  char is R/W on the wire; whether the device *honors* the write is a firmware #6
+  concern, so both call sites **re-read to confirm** rather than assume success.
+  `MockDS3231Service` / `MockSystemService` are now `final class … @unchecked
+  Sendable` (needed so the write persists through `any *Service`).
+- **⚠️ Sim has no BLE** — the live hub only renders against a real connection;
+  every subview has `#if DEBUG` previews (mock services / `MockBluetoothTransport`)
+  for design work in Xcode.
+
+**HomeView (#15) refinements this session** (maintainer-directed, sets conventions
+for later work — will sign off after review):
+- **"Ambient" → "Climate"** throughout (Climate Readings / Climate Trends / Climate
+  History Detail); the hero card **is** the navigation to Climate History Detail
+  (no separate "show all" button — Apple-Health style). *(Renames were the
+  maintainer's; the items below are this session's additions.)*
+- **Reusable components** under `Views/Components/`: **`TrendChart`** (one
+  domain-agnostic line chart + min/max/avg, takes converted `TrendPoint`s + chrome
+  — **not** per-metric chart types) and **`AnalogClockView`** (stateless `Canvas`
+  clock face; tick it from a `TimelineView`).
+- **Climate Trends** now: `ContentUnavailableView` when `trendSnapshots.isEmpty`,
+  else a **paged swipe** (`.tabViewStyle(.page)`) between temperature / humidity /
+  air-pressure `TrendChart`s, driven by a private `ClimateTrendMetric` enum (the
+  thin snapshot-field → chart-inputs mapping; Phase II sensors = new cases).
+- **Real Time Clock** now: a **live-ticking analog clock** + full device date/time
+  (one `TimelineView` feeds both, using a stored **device-minus-phone clock
+  offset** so the face shows device time without re-reading), plus a **24-h
+  component-temperature `TrendChart`**. The clock card is a **`NavigationLink` →
+  `RealTimeClockHistoryDetail`** (parity with the Climate hero card → history).
+- **Card parity + swipe dots:** both hero cards tap through to a per-snapshot
+  history list. The Climate-Trends page indicator lives in the **section footer**
+  (custom tappable dots) so it sits on the List background beneath the card, not
+  inside it — the native "swipeable cards" look. Home supporting types
+  (`ClimateHeroCard`, `ClimateTrendMetric`, both `*HistoryDetail`s) were extracted
+  to `Views/Tabs/Home/HomeSupportingViews.swift` to keep `HomeView.swift` under the
+  500-line lint cap.
+- **Convention to carry forward** (per maintainer): prefer one generic reusable
+  view parameterized by a metric enum over duplicated per-metric types; shared UI
+  lives in `Views/Components/`. See [[reusable-view-conventions]].
+
+**⏭️ PICK UP HERE (next session):** **#17 SnapshotLoggingView** — its own dedicated
+session (the generic snapshot-logging subsystem: `Snapshot` protocol, type-erased
+field/value system, `SnapshotDataProvider`, capture sessions, file-based
+persistence, CSV/JSON/binary export, and the real new deliverable — **viewport-aware
+chart decimation** for long captures). Then **#25 DebugOutputStreamView** (the
+Device→Debug placeholder is already wired to receive it). After that, MainTabView
+is fully fleshed out.
+
 **Last updated:** 2026-08-19 (session 4) — **DFU trio #20/#21/#22 DONE, hardware-
 validated, released to `main`; issues closed + marked Done on the board.** The full
 OTA DFU works end-to-end on a real CYBLE-416045: bundled/imported firmware select →

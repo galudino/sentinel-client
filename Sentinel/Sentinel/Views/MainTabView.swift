@@ -86,13 +86,24 @@ struct MainTabView: View {
     MainTabView()
         .environment(AppRouter(bluetoothManager: BluetoothManager()))
         .environment(AppPreferences())
-        .environment(ConnectedPeer(name: "Sentinel"))
+        .environment(ConnectedPeer.preview())
         .environment(PairedPeerStore())
         .environment(ImportedFirmwareStore())
 }
 
 #Preview("Firmware update available") {
     MainTabView(firmwareUpdateAvailable: true)
+        .environment(AppRouter(bluetoothManager: BluetoothManager()))
+        .environment(AppPreferences())
+        .environment(ConnectedPeer.preview())
+        .environment(PairedPeerStore())
+        .environment(ImportedFirmwareStore())
+}
+
+// Detached peer → every service read throws, so the tabs show their "awaiting
+// telemetry" / empty states — the freshly-connected-but-no-data-yet scenario.
+#Preview("Awaiting telemetry") {
+    MainTabView()
         .environment(AppRouter(bluetoothManager: BluetoothManager()))
         .environment(AppPreferences())
         .environment(ConnectedPeer(name: "Sentinel"))

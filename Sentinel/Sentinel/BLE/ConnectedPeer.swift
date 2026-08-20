@@ -56,6 +56,13 @@ final nonisolated class ConnectedPeer: BluetoothPeripheralTransport, Identifiabl
     private let peripheral: Peripheral?
     private let central: CentralManager?
 
+    /// Preview-only canned transport. `nil` in production and for plain detached
+    /// peers (whose service reads throw ``ConnectedPeerError/detached``); when a
+    /// peer is built via ``preview(name:rssi:mtu:)`` its service reads resolve
+    /// against this instead, so **container** previews (MainTabView, RootView) show
+    /// populated tabs without BLE. Leaf views still prefer `Mock*Service` directly.
+    @ObservationIgnored private var previewTransport: MockBluetoothTransport?
+
     /// Production: own a live, connected peripheral.
     init(peripheral: Peripheral, central: CentralManager) {
         self.peripheral = peripheral
@@ -97,7 +104,12 @@ final nonisolated class ConnectedPeer: BluetoothPeripheralTransport, Identifiabl
         characteristic: CBUUID,
         ofService service: CBUUID
     ) async throws -> T? {
-        guard let peripheral else { throw ConnectedPeerError.detached }
+        guard let peripheral else {
+            if let previewTransport {
+                return try await previewTransport.read(characteristic: characteristic, ofService: service)
+            }
+            throw ConnectedPeerError.detached
+        }
         return try await peripheral.readValue(
             forCharacteristicWithCBUUID: characteristic,
             ofServiceWithCBUUID: service
@@ -110,7 +122,13 @@ final nonisolated class ConnectedPeer: BluetoothPeripheralTransport, Identifiabl
         ofService service: CBUUID,
         type: CBCharacteristicWriteType
     ) async throws {
-        guard let peripheral else { throw ConnectedPeerError.detached }
+        guard let peripheral else {
+            if let previewTransport {
+                try await previewTransport.write(value, characteristic: characteristic, ofService: service, type: type)
+                return
+            }
+            throw ConnectedPeerError.detached
+        }
         try await peripheral.writeValue(
             value,
             forCharacteristicWithCBUUID: characteristic,
@@ -124,7 +142,12 @@ final nonisolated class ConnectedPeer: BluetoothPeripheralTransport, Identifiabl
         characteristic: CBUUID,
         ofService service: CBUUID
     ) async throws {
-        guard let peripheral else { throw ConnectedPeerError.detached }
+        guard let peripheral else {
+            if let previewTransport {
+                try await previewTransport.setNotify(enabled, characteristic: characteristic, ofService: service)
+            }
+            return
+        }
         try await peripheral.setNotifyValue(
             enabled,
             forCharacteristicWithCBUUID: characteristic,
@@ -134,9 +157,14 @@ final nonisolated class ConnectedPeer: BluetoothPeripheralTransport, Identifiabl
 
     func notifications<T: PeripheralDataConvertible & Sendable>(
         for characteristic: CBUUID,
-        ofService _: CBUUID
+        ofService service: CBUUID
     ) -> AsyncStream<T> {
-        guard let peripheral else { return AsyncStream { $0.finish() } }
+        guard let peripheral else {
+            if let previewTransport {
+                return previewTransport.notifications(for: characteristic, ofService: service)
+            }
+            return AsyncStream { $0.finish() }
+        }
         return AsyncStream { continuation in
             // AsyncBluetooth surfaces value updates as a Combine publisher; bridge
             // it to the stream, filtered to this characteristic and decoded to `T`.
@@ -184,6 +212,49 @@ enum ConnectedPeerError: Error {
     /// has no backing peripheral.
     case detached
 }
+
+// MARK: - Preview seam
+
+#if DEBUG
+    extension ConnectedPeer {
+        /// A detached peer whose **service reads return canned data**, for SwiftUI
+        /// previews of connected-subtree *containers* (MainTabView, RootView) — so
+        /// their tabs show populated content without a live BLE link. Simple one-shot
+        /// reads (BME280 / DS3231 / System) are seeded; the paged stores (snapshot
+        /// history, event log) are intentionally left empty, so those tabs show their
+        /// empty states. Leaf views should still preview with `Mock*Service` directly.
+        static func preview(name: String? = "Sentinel", rssi: Int = -58, mtu: Int = 247) -> ConnectedPeer {
+            let peer = ConnectedPeer(name: name)
+            let transport = MockBluetoothTransport()
+
+            // BME280 — one-shot ambient sample.
+            transport.setReadValue(
+                BME280Sample(temperatureCentiDegC: 2205, humidityCentiPct: 4780, pressurePa: 101_300),
+                for: BME280CharacteristicUUID.ambientSample.cbuuid
+            )
+            // DS3231 — clock + on-die temperature + alarm flags.
+            transport.setReadValue(
+                UInt32(Date().timeIntervalSince1970),
+                for: DS3231CharacteristicUUID.unixTime.cbuuid
+            )
+            transport.setReadValue(Int16(2500), for: DS3231CharacteristicUUID.rtcTemperature.cbuuid)
+            transport.setReadValue(UInt8(0), for: DS3231CharacteristicUUID.alarmFlags.cbuuid)
+            // System — identity + health.
+            transport.setReadValue(
+                FirmwareVersion(major: 1, minor: 0, patch: 1, build: 17),
+                for: SystemCharacteristicUUID.firmwareVersion.cbuuid
+            )
+            transport.setReadValue(PlatformID.cyble416045.rawValue, for: SystemCharacteristicUUID.platformID.cbuuid)
+            transport.setReadValue(UInt32(0x0000_ABCD), for: SystemCharacteristicUUID.serialNumber.cbuuid)
+            transport.setReadValue(UInt16(4200), for: SystemCharacteristicUUID.cpuTemperature.cbuuid)
+
+            peer.previewTransport = transport
+            peer.rssi = rssi
+            peer.negotiatedMTU = mtu
+            return peer
+        }
+    }
+#endif
 
 /// A `Sendable` holder for an `AnyCancellable`, so a Combine subscription can be
 /// captured into an `AsyncStream`'s `@Sendable` termination handler. `nonisolated`

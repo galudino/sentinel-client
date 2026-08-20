@@ -8,6 +8,8 @@
 import Charts
 import SwiftUI
 
+// MARK: - HomeView
+
 /// The **Home** tab (#15) — the Apple-Health-`Summary`-style landing view: an
 /// at-a-glance read of the device's current state plus a historical trend.
 ///
@@ -36,28 +38,45 @@ struct HomeView: View {
     @State private var sample: BME280Sample?
     /// Live RTC temperature (0.01 °C/LSB); `nil` until read.
     @State private var rtcTempCentiC: Int16?
-    /// Device wall-clock time, from the DS3231 Unix-time characteristic.
-    @State private var deviceTime: Date?
+    /// Device-minus-phone clock offset (seconds), from the DS3231 Unix-time
+    /// characteristic; drives the live-ticking analog clock + date/time text so
+    /// the face advances against *device* time without re-reading each second.
+    @State private var deviceClockOffset: TimeInterval?
     /// Persisted snapshots for the trend chart, oldest→newest.
     @State private var snapshots: [DeviceSnapshot] = []
     /// When `sample` last changed — drives the "updated N ago" caption.
     @State private var lastUpdated: Date?
     @State private var bannerDismissed = false
+    /// Which climate-trend page is showing — bound to the paged `TabView` and the
+    /// custom page indicator rendered in the section footer.
+    @State private var selectedTrend: ClimateTrendMetric = .temperature
 
     var body: some View {
         NavigationStack {
             List {
                 firmwareBannerSection
-                ambientSection
-                timeClockSection
 
                 if sample == nil, snapshots.isEmpty {
                     ContentUnavailableView(
-                        "Waiting for Telemetry",
-                        systemImage: "sensor.fill",
+                        "Waiting for Environmental Sensor (BME280)",
+                        systemImage: "thermometer.medium",
                         description: Text("Live BME280 readings appear as the device reports them.")
                     )
                     .listRowBackground(Color.clear)
+                } else {
+                    climateSection
+                    climateTrendsSection
+                }
+
+                if deviceClockOffset == nil, snapshots.isEmpty {
+                    ContentUnavailableView(
+                        "Waiting for Real Time Clock (DS3231)",
+                        systemImage: "clock",
+                        description: Text("Live DS3231 readings appear as the device reports them.")
+                    )
+                    .listRowBackground(Color.clear)
+                } else {
+                    timeClockSection
                 }
             }
             .navigationTitle(deviceName ?? "Home")
@@ -90,45 +109,144 @@ struct HomeView: View {
         }
     }
 
-    @ViewBuilder private var ambientSection: some View {
+    @ViewBuilder private var climateSection: some View {
         Section {
-            AmbientHeroCard(sample: sample, lastUpdated: lastUpdated, prefs: prefs)
-
-            if !trendSnapshots.isEmpty {
-                TemperatureTrendChart(snapshots: trendSnapshots, prefs: prefs)
-            }
-
-            if !snapshots.isEmpty {
-                NavigationLink {
-                    EnvironmentalHistoryDetail(snapshots: snapshots.reversed())
-                } label: {
-                    Label("Show all environmental data", systemImage: "list.bullet.rectangle")
+            NavigationLink(destination: {
+                if !snapshots.isEmpty {
+                    ClimateHistoryDetail(snapshots: snapshots)
+                }
+            }, label: {
+                ClimateHeroCard(sample: sample, lastUpdated: lastUpdated, prefs: prefs)
+                    .listRowSeparator(.hidden)
+            })
+        } header: {
+            Label("Climate Readings", systemImage: "thermometer.medium")
+        } footer: {
+            if let lastUpdated {
+                TimelineView(.periodic(from: .now, by: 1)) { _ in
+                    Text("updated \(lastUpdated.formatted(.relative(presentation: .numeric)))")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
             }
-        } header: {
-            Label("Ambient", systemImage: "thermometer.medium")
         }
+    }
+
+    @ViewBuilder private var climateTrendsSection: some View {
+        Section {
+            if trendSnapshots.isEmpty {
+                ContentUnavailableView(
+                    "No Trends Yet",
+                    systemImage: "chart.xyaxis.line",
+                    description: Text("Trends appear here as the device records its periodic snapshots.")
+                )
+            } else {
+                // One reusable TrendChart per metric, paged so the user swipes
+                // between temperature / humidity / air pressure. A single chart type
+                // (not per-metric subclasses) — the metrics differ only in which
+                // field, unit, tint, and precision they pull from each snapshot. The
+                // built-in page dots are hidden; the indicator lives in the section
+                // footer so it sits on the List background, not inside the card.
+                TabView(selection: $selectedTrend) {
+                    ForEach(ClimateTrendMetric.allCases) { metric in
+                        TrendChart(
+                            title: metric.title,
+                            points: metric.points(from: trendSnapshots, prefs: prefs),
+                            unitSymbol: metric.unitSymbol(prefs),
+                            tint: metric.tint,
+                            fractionDigits: metric.fractionDigits(prefs)
+                        )
+                        .tag(metric)
+                    }
+                }
+                .frame(height: 190)
+                .tabViewStyle(.page(indexDisplayMode: .never))
+                .listRowSeparator(.hidden)
+            }
+        } header: {
+            Label("Climate Trends", systemImage: "chart.xyaxis.line")
+        } footer: {
+            if !trendSnapshots.isEmpty {
+                trendPageIndicator
+            }
+        }
+    }
+
+    /// Page dots for the climate-trend swipe, rendered in the section footer so
+    /// they sit on the List's background beneath the card (à la swipeable cards in
+    /// other apps). Tappable as a shortcut to each page.
+    private var trendPageIndicator: some View {
+        HStack(spacing: 8) {
+            ForEach(ClimateTrendMetric.allCases) { metric in
+                Circle()
+                    .fill(metric == selectedTrend ? Color.primary : Color.secondary.opacity(0.35))
+                    .frame(width: 7, height: 7)
+                    .onTapGesture { withAnimation { selectedTrend = metric } }
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.top, 6)
     }
 
     @ViewBuilder private var timeClockSection: some View {
         Section {
-            LabeledContent("Device time") {
-                if let deviceTime {
-                    Text(deviceTime, format: .dateTime.year().month().day().hour().minute().second())
-                        .monospacedDigit()
-                } else {
-                    Text("—").foregroundStyle(.secondary)
-                }
-            }
-            LabeledContent("RTC temperature") {
+            clockRow
+            LabeledContent("Component Temperature") {
                 if let rtcTempCentiC {
                     Text(Self.temperatureText(centiC: rtcTempCentiC, prefs: prefs))
                 } else {
                     Text("—").foregroundStyle(.secondary)
                 }
             }
+            if !componentTemperaturePoints.isEmpty {
+                TrendChart(
+                    title: "24-Hour Component Temperature",
+                    points: componentTemperaturePoints,
+                    unitSymbol: prefs.temperatureUnit.symbol,
+                    tint: .pink
+                )
+                .listRowSeparator(.hidden)
+            }
         } header: {
-            Label("Time & Clock", systemImage: "clock")
+            Label("Real Time Clock", systemImage: "clock")
+        }
+    }
+
+    /// The tappable clock card — parity with the Climate hero card: it navigates to
+    /// ``RealTimeClockHistoryDetail`` (the per-snapshot RTC listing).
+    private var clockRow: some View {
+        NavigationLink {
+            if !snapshots.isEmpty {
+                RealTimeClockHistoryDetail(snapshots: snapshots)
+            }
+        } label: {
+            clockRowLabel
+        }
+    }
+
+    /// Live-ticking analog clock + full device date/time. One `TimelineView` drives
+    /// both the face and the text so they stay in lockstep; the device clock offset
+    /// keeps the face on *device* time, not the phone's.
+    @ViewBuilder private var clockRowLabel: some View {
+        if let deviceClockOffset {
+            TimelineView(.periodic(from: .now, by: 1)) { context in
+                let shown = context.date.addingTimeInterval(deviceClockOffset)
+                HStack(spacing: 16) {
+                    AnalogClockView(date: shown)
+                        .frame(width: 64, height: 64)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(shown, format: .dateTime.weekday(.abbreviated).month(.abbreviated).day().year())
+                            .font(.headline)
+                        Text(shown, format: .dateTime.hour().minute().second())
+                            .font(.title3).monospacedDigit()
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                }
+                .padding(.vertical, 4)
+            }
+        } else {
+            LabeledContent("Date & Time") { Text("—").foregroundStyle(.secondary) }
         }
     }
 
@@ -137,25 +255,41 @@ struct HomeView: View {
     /// Snapshots within 24 h of the most recent one (the device clock is the
     /// reference, not the phone's — they may differ).
     private var trendSnapshots: [DeviceSnapshot] {
-        guard let latest = snapshots.last?.timestamp else { return [] }
+        guard let latest = snapshots.last?.timestamp else {
+            return []
+        }
         let cutoff = latest.addingTimeInterval(-24 * 3600)
         return snapshots.filter { $0.timestamp >= cutoff }
+    }
+
+    /// Component (DS3231 on-die) temperature over the trend window, in the user's
+    /// unit — feeds the Real-Time-Clock section's trend chart.
+    private var componentTemperaturePoints: [TrendPoint] {
+        trendSnapshots.map {
+            TrendPoint(date: $0.timestamp, value: prefs.temperatureUnit.convert(celsius: $0.rtcTemperatureCelsius))
+        }
     }
 
     // MARK: - Data loading
 
     private func loadInitial() async {
-        if sample == nil { sample = try? await bme280.readAmbientSample() }
+        if sample == nil {
+            sample = try? await bme280.readAmbientSample()
+        }
         rtcTempCentiC = try? await ds3231.readRTCTemperature()
         if let seconds = try? await ds3231.readUnixTime() {
-            deviceTime = Date(timeIntervalSince1970: TimeInterval(seconds))
+            deviceClockOffset = TimeInterval(seconds) - Date().timeIntervalSince1970
         }
-        if sample != nil, lastUpdated == nil { lastUpdated = .now }
+        if sample != nil, lastUpdated == nil {
+            lastUpdated = .now
+        }
         await loadHistory()
     }
 
     private func loadHistory() async {
-        guard let snaps = try? await history.readAllSnapshots() else { return }
+        guard let snaps = try? await history.readAllSnapshots() else {
+            return
+        }
         snapshots = snaps.sorted { $0.unixTimestamp < $1.unixTimestamp }
     }
 
@@ -180,155 +314,6 @@ struct HomeView: View {
     static func temperatureText(centiC: Int16, prefs: AppPreferences) -> String {
         let value = prefs.temperatureUnit.convert(celsius: Double(centiC) / 100.0)
         return value.formatted(.number.precision(.fractionLength(1))) + " " + prefs.temperatureUnit.symbol
-    }
-}
-
-// MARK: - Ambient hero card
-
-/// The large current-readings card: temperature, humidity, pressure, and a
-/// live-updating "updated N ago" caption.
-private struct AmbientHeroCard: View {
-    let sample: BME280Sample?
-    let lastUpdated: Date?
-    let prefs: AppPreferences
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(alignment: .firstTextBaseline, spacing: 20) {
-                reading(
-                    value: temperatureValue,
-                    unit: prefs.temperatureUnit.symbol,
-                    icon: "thermometer.medium",
-                    tint: .orange
-                )
-                reading(value: humidityValue, unit: "%", icon: "humidity", tint: .blue)
-                reading(value: pressureValue, unit: prefs.pressureUnit.symbol, icon: "gauge.medium", tint: .teal)
-            }
-
-            if let lastUpdated {
-                TimelineView(.periodic(from: .now, by: 1)) { _ in
-                    Text("updated \(lastUpdated.formatted(.relative(presentation: .numeric)))")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-            }
-        }
-        .padding(.vertical, 4)
-    }
-
-    @ViewBuilder private func reading(value: String, unit: String, icon: String, tint: Color) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Image(systemName: icon).font(.caption).foregroundStyle(tint)
-            HStack(alignment: .firstTextBaseline, spacing: 2) {
-                Text(value).font(.title2).fontWeight(.semibold).monospacedDigit()
-                Text(unit).font(.caption).foregroundStyle(.secondary)
-            }
-        }
-    }
-
-    private var temperatureValue: String {
-        guard let sample else { return "—" }
-        return prefs.temperatureUnit.convert(celsius: sample.temperatureCelsius)
-            .formatted(.number.precision(.fractionLength(1)))
-    }
-
-    private var humidityValue: String {
-        guard let sample else { return "—" }
-        return sample.humidityPercent.formatted(.number.precision(.fractionLength(1)))
-    }
-
-    private var pressureValue: String {
-        guard let sample else { return "—" }
-        let value = prefs.pressureUnit.convert(hectopascals: sample.pressureHectopascals)
-        let fraction = prefs.pressureUnit == .inchesOfMercury ? 2 : (prefs.pressureUnit == .kilopascals ? 1 : 0)
-        return value.formatted(.number.precision(.fractionLength(fraction)))
-    }
-}
-
-// MARK: - Temperature trend chart
-
-/// A 24 h temperature line chart with min / max / avg summary, in the user's unit.
-private struct TemperatureTrendChart: View {
-    let snapshots: [DeviceSnapshot]
-    let prefs: AppPreferences
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("24-Hour Temperature").font(.subheadline).foregroundStyle(.secondary)
-
-            Chart(snapshots, id: \.unixTimestamp) { snap in
-                LineMark(
-                    x: .value("Time", snap.timestamp),
-                    y: .value("Temp", prefs.temperatureUnit.convert(celsius: snap.temperatureCelsius))
-                )
-                .interpolationMethod(.catmullRom)
-                .foregroundStyle(.orange)
-            }
-            .chartYAxis { AxisMarks(position: .leading) }
-            .frame(height: 120)
-
-            HStack(spacing: 16) {
-                stat("min", minValue)
-                stat("max", maxValue)
-                stat("avg", avgValue)
-            }
-            .font(.caption)
-        }
-        .padding(.vertical, 4)
-    }
-
-    @ViewBuilder private func stat(_ label: String, _ value: String) -> some View {
-        HStack(spacing: 4) {
-            Text(label).foregroundStyle(.secondary)
-            Text(value).fontWeight(.medium).monospacedDigit()
-        }
-    }
-
-    private var temps: [Double] {
-        snapshots.map { prefs.temperatureUnit.convert(celsius: $0.temperatureCelsius) }
-    }
-
-    private func format(_ value: Double) -> String {
-        value.formatted(.number.precision(.fractionLength(1))) + prefs.temperatureUnit.symbol
-    }
-
-    private var minValue: String { temps.min().map(format) ?? "—" }
-    private var maxValue: String { temps.max().map(format) ?? "—" }
-    private var avgValue: String {
-        guard !temps.isEmpty else { return "—" }
-        return format(temps.reduce(0, +) / Double(temps.count))
-    }
-}
-
-// MARK: - Environmental history detail ("Show all")
-
-/// A lightweight list of every persisted snapshot's ambient readings. The rich
-/// per-section historical charts are deliberately separate work (see #15); this
-/// keeps the "Show all" disclosure a live control rather than a dead end.
-private struct EnvironmentalHistoryDetail: View {
-    let snapshots: [DeviceSnapshot]
-    @Environment(AppPreferences.self) private var prefs
-
-    var body: some View {
-        List(snapshots, id: \.unixTimestamp) { snap in
-            VStack(alignment: .leading, spacing: 4) {
-                Text(snap.timestamp, format: .dateTime.month().day().hour().minute())
-                    .font(.subheadline)
-                HStack(spacing: 16) {
-                    Text(HomeView.temperatureText(centiC: snap.temperatureCentiDegC, prefs: prefs))
-                    Text(snap.humidityPercent.formatted(.number.precision(.fractionLength(1))) + " %")
-                    Text(
-                        prefs.pressureUnit.convert(hectopascals: snap.pressureHectopascals)
-                            .formatted(.number.precision(.fractionLength(0))) + " " + prefs.pressureUnit.symbol
-                    )
-                }
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .monospacedDigit()
-            }
-        }
-        .navigationTitle("Environmental Data")
-        .navigationBarTitleDisplayMode(.inline)
     }
 }
 
@@ -367,7 +352,7 @@ private struct EnvironmentalHistoryDetail: View {
 
     #Preview("Live + history") {
         HomeView(
-            deviceName: "Sentinel-A1B2",
+            deviceName: "Sentinel",
             bme280: MockBME280Service(),
             ds3231: MockDS3231Service(),
             history: MockSnapshotHistoryService(snapshots: DeviceSnapshot.previewSeries())
@@ -377,7 +362,7 @@ private struct EnvironmentalHistoryDetail: View {
 
     #Preview("Empty history") {
         HomeView(
-            deviceName: "Sentinel-A1B2",
+            deviceName: "Sentinel",
             bme280: MockBME280Service(),
             ds3231: MockDS3231Service(),
             history: MockSnapshotHistoryService(snapshots: [])
@@ -387,7 +372,7 @@ private struct EnvironmentalHistoryDetail: View {
 
     #Preview("Firmware update") {
         HomeView(
-            deviceName: "Sentinel-A1B2",
+            deviceName: "Sentinel",
             bme280: MockBME280Service(),
             ds3231: MockDS3231Service(),
             history: MockSnapshotHistoryService(snapshots: DeviceSnapshot.previewSeries()),
@@ -401,11 +386,49 @@ private struct EnvironmentalHistoryDetail: View {
         prefs.temperatureUnit = .fahrenheit
         prefs.pressureUnit = .inchesOfMercury
         return HomeView(
-            deviceName: "Sentinel-A1B2",
+            deviceName: "Sentinel",
             bme280: MockBME280Service(),
             ds3231: MockDS3231Service(),
             history: MockSnapshotHistoryService(snapshots: DeviceSnapshot.previewSeries())
         )
         .environment(prefs)
+    }
+
+    // Every service read fails → the BME280 + DS3231 "waiting" ContentUnavailableViews
+    // show (the freshly-connected-but-no-data state the empty-state cards handle).
+    #Preview("Awaiting telemetry") {
+        HomeView(
+            deviceName: "Sentinel",
+            bme280: UnavailablePreviewService(),
+            ds3231: UnavailablePreviewService(),
+            history: UnavailablePreviewService()
+        )
+        .environment(AppPreferences())
+    }
+
+    /// A single preview double that conforms to the three Home services and fails
+    /// every read, so Home renders its "awaiting telemetry" empty states.
+    private struct UnavailablePreviewService: BME280Service, DS3231Service, SnapshotHistoryService {
+        struct Unavailable: Error {}
+
+        // BME280
+        func readAmbientSample() async throws -> BME280Sample { throw Unavailable() }
+        func ambientSampleNotifications() -> AsyncStream<BME280Sample> { .init { $0.finish() } }
+
+        // DS3231
+        func readUnixTime() async throws -> UInt32 { throw Unavailable() }
+        func writeUnixTime(_: UInt32) async throws {}
+        func readRTCTemperature() async throws -> Int16 { throw Unavailable() }
+        func readAlarmFlags() async throws -> UInt8 { throw Unavailable() }
+        func setTemperatureNotifying(_: Bool) async throws {}
+        func rtcTemperatureNotifications() -> AsyncStream<Int16> { .init { $0.finish() } }
+
+        // SnapshotHistory
+        func readRecordCount() async throws -> UInt32 { 0 }
+        func readAllSnapshots() async throws -> [DeviceSnapshot] { [] }
+        func clearStore() async throws {}
+
+        // setNotifying is required by BME280Service.
+        func setNotifying(_: Bool) async throws {}
     }
 #endif

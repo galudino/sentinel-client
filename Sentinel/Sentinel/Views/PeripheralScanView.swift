@@ -26,8 +26,10 @@ struct PeripheralScanView: View {
     @State private var unavailable: BluetoothUnavailableReason?
 
     /// When true, `.task` / `.onChange` skip the real scan — previews seed state
-    /// directly (the simulator has no BLE). Always `false` in the shipping app.
-    private var isPreview = false
+    /// directly (the simulator has no BLE). Defaults to the Xcode-Preview probe so
+    /// that even when `RootView` builds this view with the plain ``init()`` (the
+    /// full-flow preview), the BLE-less path is taken. Always `false` in the app.
+    private var isPreview = AppEnvironment.isRunningInXcodePreview
 
     init() {}
 

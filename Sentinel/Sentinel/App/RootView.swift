@@ -61,8 +61,34 @@ struct RootView: View {
     }
 }
 
-#Preview {
-    RootView()
-        .environment(AppRouter(bluetoothManager: BluetoothManager()))
-        .environment(PairedPeerStore.preview(peers: []))
-}
+#if DEBUG
+    /// The full app flow, drivable in the preview canvas: starts at
+    /// `PeripheralScanView` with a seeded "Sentinel" in range → tap it → `ConnectingView`
+    /// → a populated `MainTabView`. The router's central is a ``PreviewBluetoothCentral``
+    /// (fakes connect → `ConnectedPeer.preview()`); the scan list comes from a
+    /// `BluetoothManager.preview(...)`. All app-wide environment objects are injected
+    /// so every branch of the tree can render.
+    #Preview("Full flow") {
+        RootView()
+            .environment(AppRouter(bluetoothManager: PreviewBluetoothCentral()))
+            .environment(BluetoothManager.preview(discovered: [
+                PeripheralScanItem(previewName: "Sentinel", rssi: -47, lastUpdated: .now.addingTimeInterval(-1))
+            ]))
+            .environment(AppPreferences())
+            .environment(PairedPeerStore.preview(peers: []))
+            .environment(ImportedFirmwareStore())
+    }
+
+    /// Straight into the connected tabs — a populated `MainTabView` reached through
+    /// `RootView` (zero-delay fake connect, so it lands on the tabs immediately).
+    #Preview("Connected (populated)") {
+        @Previewable @State var router = AppRouter(bluetoothManager: PreviewBluetoothCentral(connectDelay: .zero))
+        RootView()
+            .environment(router)
+            .environment(BluetoothManager.preview(discovered: []))
+            .environment(AppPreferences())
+            .environment(PairedPeerStore.preview(peers: []))
+            .environment(ImportedFirmwareStore())
+            .task { router.beginConnect(peripheralID: UUID(), name: "Sentinel") }
+    }
+#endif

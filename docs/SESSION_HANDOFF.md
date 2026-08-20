@@ -94,6 +94,33 @@ for later work — will sign off after review):
   view parameterized by a metric enum over duplicated per-metric types; shared UI
   lives in `Views/Components/`. See [[reusable-view-conventions]].
 
+**Preview-simulation stack (post-#15 follow-up, this session):** the whole app is
+now drivable in the Xcode preview canvas through `RootView` — see
+[[preview-simulation-stack]].
+- `RootView` gained a **"Full flow"** preview: starts at `PeripheralScanView` with a
+  seeded "Sentinel" → tap → `ConnectingView` ("Connecting to Sentinel…") → a
+  **populated `MainTabView`**. Plus a "Connected (populated)" preview that lands on
+  the tabs directly (zero-delay fake connect).
+- Fixes the two reported bugs: (1) **RootView preview crashed** — it now injects all
+  five app-wide environment objects, and `PeripheralScanView.isPreview` defaults to
+  `AppEnvironment.isRunningInXcodePreview` (`XCODE_RUNNING_FOR_PREVIEWS`), so it skips
+  the real BLE scan even when built via the plain `init()`. (2) **MainTabView mock
+  snapshots didn't propagate** — `ConnectedPeer.preview()` now also seeds the **paged
+  snapshot history** (record count + one encoded block; the mock transport returns the
+  same block per read, so one page resolves the whole store), so Home's trends +
+  Climate History populate.
+- New pieces: `App/AppEnvironment.swift`, `BLE/PreviewBluetoothCentral.swift`
+  (`BluetoothCentral` that fakes connect → `ConnectedPeer.preview()`),
+  `BLE/Model/DeviceSnapshot+Preview.swift` (moved `previewSeries` + a
+  `previewHistoryBlock`/`previewFrame`, all `nonisolated`).
+- **Known gaps (follow-ups):** LogsView stays **empty** in container previews —
+  `SystemEventRecord` has decoders but **no byte encoder**, so the event-log paged
+  store can't be seeded yet (add an encoder to populate it). And the **DFU flow**
+  through RootView (Device → Firmware → FirmwareUpdateView) still builds a *real*
+  `OTAUploader` against the mock transport, so it won't complete in preview; to
+  simulate it, have `FirmwareUpdateView` use a preview uploader (mock OTA +
+  reconnector, like `OTAUploaderTests`) when `AppEnvironment.isRunningInXcodePreview`.
+
 **⏭️ PICK UP HERE (next session):** **#17 SnapshotLoggingView** — its own dedicated
 session (the generic snapshot-logging subsystem: `Snapshot` protocol, type-erased
 field/value system, `SnapshotDataProvider`, capture sessions, file-based

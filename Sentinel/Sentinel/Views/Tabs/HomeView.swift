@@ -320,36 +320,6 @@ struct HomeView: View {
 // MARK: - Previews
 
 #if DEBUG
-    extension DeviceSnapshot {
-        /// Build a 24 h ramp of snapshots for chart previews: `count` frames ending at
-        /// `unixTimestamp`, temperature swinging on a diurnal-ish curve.
-        static func previewSeries(count: Int = 24, endingAt end: UInt32 = 1_760_000_000) -> [DeviceSnapshot] {
-            (0 ..< count).map { index in
-                let time = end - UInt32((count - 1 - index) * 3600)
-                let phase = Double(index) / Double(max(count - 1, 1)) * 2 * .pi
-                let tempC = 21.5 + 2.5 * sin(phase) // ~19–24 °C
-                return DeviceSnapshot(
-                    unixTimestamp: time,
-                    snapshotVersion: 1,
-                    firmwareVersion: FirmwareVersion(major: 1, minor: 0, patch: 0, build: 16),
-                    temperatureCentiDegC: Int16(tempC * 100),
-                    humidityCentiPct: UInt16(4500 + index * 10),
-                    pressurePa: 101_325,
-                    rtcTemperatureCentiDegC: 2500,
-                    rtcAlarmFlags: 0,
-                    eventLogRecordCount: 12,
-                    snapshotLogRecordCount: UInt32(index),
-                    bleConnected: true,
-                    bleTxPowerDbm: 4,
-                    blePeerRssiNeg: 58,
-                    cpuTemperatureCentiDegC: 4200,
-                    postLastStatus: 0,
-                    uptimeSeconds: 3600
-                )
-            }
-        }
-    }
-
     #Preview("Live + history") {
         HomeView(
             deviceName: "Sentinel",

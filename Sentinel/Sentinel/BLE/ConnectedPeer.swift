@@ -219,10 +219,12 @@ enum ConnectedPeerError: Error {
     extension ConnectedPeer {
         /// A detached peer whose **service reads return canned data**, for SwiftUI
         /// previews of connected-subtree *containers* (MainTabView, RootView) — so
-        /// their tabs show populated content without a live BLE link. Simple one-shot
-        /// reads (BME280 / DS3231 / System) are seeded; the paged stores (snapshot
-        /// history, event log) are intentionally left empty, so those tabs show their
-        /// empty states. Leaf views should still preview with `Mock*Service` directly.
+        /// their tabs show populated content without a live BLE link. One-shot reads
+        /// (BME280 / DS3231 / System) **and** the paged **snapshot history** are
+        /// seeded, so Home's trends + Climate History populate exactly as when
+        /// HomeView is previewed on its own. The event log has no byte encoder yet,
+        /// so LogsView still shows its empty state here. Leaf views should still
+        /// preview with `Mock*Service` directly.
         static func preview(name: String? = "Sentinel", rssi: Int = -58, mtu: Int = 247) -> ConnectedPeer {
             let peer = ConnectedPeer(name: name)
             let transport = MockBluetoothTransport()
@@ -247,6 +249,23 @@ enum ConnectedPeerError: Error {
             transport.setReadValue(PlatformID.cyble416045.rawValue, for: SystemCharacteristicUUID.platformID.cbuuid)
             transport.setReadValue(UInt32(0x0000_ABCD), for: SystemCharacteristicUUID.serialNumber.cbuuid)
             transport.setReadValue(UInt16(4200), for: SystemCharacteristicUUID.cpuTemperature.cbuuid)
+
+            // Snapshot history (paged store) — the mock transport returns the same
+            // block per read, so a record count matching a single seeded block
+            // resolves the whole store in one page (PagedStore.readAllRawRecords).
+            // This is what makes Home's trends + Climate History populate in the
+            // container previews exactly as in HomeView's own previews.
+            let historyCount = 24
+            transport.setReadValue(UInt32(historyCount), for: SnapshotHistoryCharacteristicUUID.recordCount.cbuuid)
+            transport.setReadData(
+                DeviceSnapshot.previewHistoryBlock(count: historyCount),
+                for: SnapshotHistoryCharacteristicUUID.recordBlock.cbuuid
+            )
+            // Live snapshot stream — a single current frame for any reader.
+            transport.setReadData(
+                DeviceSnapshot.encode(.previewFrame),
+                for: SnapshotStreamCharacteristicUUID.currentDeviceSnapshot.cbuuid
+            )
 
             peer.previewTransport = transport
             peer.rssi = rssi

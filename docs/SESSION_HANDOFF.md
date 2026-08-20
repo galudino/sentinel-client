@@ -20,15 +20,18 @@ the architecture docs rather than letting them accumulate here.
 
 ---
 
-**Last updated:** 2026-08-19 (session 5) — **#18 DeviceView DONE: the Device tab
-is now the full navigation hub + GATT Explorer.** On branch `18-device-view` off
-`develop`, **not committed** (awaiting the maintainer's review, then the
-tag/squash-merge routine). Build + lint clean; **9 new unit tests green**
-(`CharacteristicCatalogTests`) on top of the prior suite. **#15 HomeView + #16
-LogsView confirmed complete** (build clean, no changes needed). **#17
-SnapshotLoggingView is still the stub** — deliberately left for its own dedicated
-session (it's the generic snapshot-logging + charting + export subsystem; chart
-perf on long captures is the one new problem).
+**Last updated:** 2026-08-19 (session 5) — **#18 DeviceView + #15 HomeView DONE,
+landed on `develop` as two separated commits.** Build + lint + tests green
+(9 new `CharacteristicCatalogTests`). **Now on `develop`** (linear, **not pushed**):
+- `80b4b28` **View: DeviceView hub + GATT explorer (#18)** — tag `18-device-view-history`
+  (verified it builds standalone).
+- `0884584` **View: HomeView climate/trends/clock refinements + reusable chart & clock (#15)**
+  — tag `15-homeview-history`.
+Feature branch `18-device-view` was deleted after the fast-forward. **Board: #15,
+#16, #18 marked Done + closed** with per-issue "what shipped" archive comments;
+**#17 stays Ready** (next session). **#17 SnapshotLoggingView is still the stub** —
+deliberately its own dedicated session (the generic snapshot-logging + charting +
+export subsystem; chart perf on long captures is the one new problem).
 - **DeviceView is now a hub, not a flat list** — `DeviceCategory` enum
   (`Model/DeviceCategory.swift`) drives it: **compact (iPhone)** = `List` +
   `navigationDestination`; **regular (iPad/macOS)** = `NavigationSplitView`

@@ -64,7 +64,7 @@ struct SnapshotLoggingView: View {
                 .navigationDestination(for: SnapshotRoute.self) { route in
                     switch route {
                     case let .deviceSnapshotSessionChart(session):
-                        SnapshotSessionChartView<DeviceSnapshotDataProvider>(session: session)
+                        SnapshotSessionChartView(session: session)
                     }
                 }
         }

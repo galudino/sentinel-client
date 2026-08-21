@@ -26,8 +26,10 @@ struct PeripheralScanView: View {
     @State private var unavailable: BluetoothUnavailableReason?
 
     /// When true, `.task` / `.onChange` skip the real scan — previews seed state
-    /// directly (the simulator has no BLE). Always `false` in the shipping app.
-    private var isPreview = false
+    /// directly (the simulator has no BLE). Defaults to the Xcode-Preview probe so
+    /// that even when `RootView` builds this view with the plain ``init()`` (the
+    /// full-flow preview), the BLE-less path is taken. Always `false` in the app.
+    private var isPreview = AppEnvironment.isRunningInXcodePreview
 
     init() {}
 
@@ -50,10 +52,19 @@ struct PeripheralScanView: View {
                 deviceList
             }
         }
-        .navigationTitle("Sentinel Devices")
+        .navigationTitle("Peripheral Discovery")
         .toolbar {
             ToolbarItem(placement: .topBarLeading) {
-                Button("Re-scan", systemImage: "arrow.clockwise") { startScan() }
+                Button {
+                    toggleScan()
+                } label: {
+                    if bluetoothManager.isScanning {
+                        Label("Stop", systemImage: "stop.circle")
+                    } else {
+                        Label("Scan", systemImage: "arrow.clockwise")
+                    }
+                }
+                .disabled(unavailable != nil)
             }
         }
         .task {
@@ -71,7 +82,7 @@ struct PeripheralScanView: View {
 
     private var deviceList: some View {
         List {
-            Section("Other Devices Nearby") {
+            Section(content: {
                 ForEach(bluetoothManager.discoveredPeripherals) { item in
                     Button {
                         router.beginConnect(peripheralID: item.id, name: item.name)
@@ -80,7 +91,23 @@ struct PeripheralScanView: View {
                     }
                     .buttonStyle(.plain)
                 }
-            }
+            }, header: {
+                LabeledContent(content: {
+                    let count = bluetoothManager.discoveredPeripherals.count
+                    let labelSuffix = count == 1 ? "peripheral found" : "peripherals found"
+                    Text("\(count) \(labelSuffix)")
+                }, label: {
+                    HStack {
+                        if bluetoothManager.isScanning {
+                            ProgressView()
+                            Text("Scanning…")
+                        } else {
+                            Image(systemName: "pause.circle")
+                            Text("Paused")
+                        }
+                    }
+                })
+            }, footer: {})
         }
     }
 
@@ -109,6 +136,16 @@ struct PeripheralScanView: View {
             } else {
                 Button("Try Again") { startScan() }
             }
+        }
+    }
+
+    /// Toolbar Start/Stop: pause a running scan (BLE scanning is continuous and
+    /// battery-costly, so an explicit stop is worthwhile), or (re)start one.
+    private func toggleScan() {
+        if bluetoothManager.isScanning {
+            Task { try? await bluetoothManager.stopScan() }
+        } else {
+            startScan()
         }
     }
 

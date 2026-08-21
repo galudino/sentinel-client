@@ -100,8 +100,8 @@ final class OTAUploader {
             case .restarting: "Restarting device…"
             case .reconnecting: "Reconnecting…"
             case .verifying: "Confirming version…"
-            case .complete: "Update complete"
-            case let .failed(reason): reason
+            case .complete: "Update complete."
+            case .failed: "Update failed."
             }
         }
 

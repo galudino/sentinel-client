@@ -210,7 +210,7 @@ struct FirmwareUpdateView: View {
 
     private func previewView(_ state: OTAUploader.State, progress: Double = 0) -> some View {
         FirmwareUpdateView(
-            peer: ConnectedPeer(name: "Sentinel-A1B2"),
+            peer: ConnectedPeer(name: "Sentinel"),
             image: FirmwareImage(version: "1.1.0"),
             previewUploader: .preview(state, progress: progress)
         )

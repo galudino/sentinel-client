@@ -285,7 +285,7 @@ struct FirmwareSelectionView: View {
 #if DEBUG
     private func previewSelection(installed: FirmwareVersion?) -> some View {
         NavigationStack {
-            FirmwareSelectionView(peer: ConnectedPeer(name: "Sentinel-A1B2"), installedVersion: installed)
+            FirmwareSelectionView(peer: ConnectedPeer(name: "Sentinel"), installedVersion: installed)
         }
         .environment(AppRouter(bluetoothManager: BluetoothManager()))
         .environment(ImportedFirmwareStore(

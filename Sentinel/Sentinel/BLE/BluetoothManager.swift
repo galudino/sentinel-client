@@ -42,6 +42,11 @@ final class BluetoothManager: BluetoothCentral, @unchecked Sendable {
 
     private(set) var connectionState: ConnectionState = .disconnected
 
+    /// Whether a scan is actively running — drives `PeripheralScanView`'s
+    /// Scanning/Paused indicator + Start/Stop control (#12). Set true once a scan
+    /// stream is live; cleared on any scan teardown (stop, connect, or replace).
+    private(set) var isScanning = false
+
     private let central = CentralManager()
 
     /// The running scan-consumer task, retained so ``stopScan()`` can cancel it.
@@ -93,6 +98,7 @@ final class BluetoothManager: BluetoothCentral, @unchecked Sendable {
                 self?.pruneStale()
             }
         }
+        isScanning = true
     }
 
     /// Drop entries whose last advertisement is older than ``staleAfter``.
@@ -115,6 +121,7 @@ final class BluetoothManager: BluetoothCentral, @unchecked Sendable {
         scanTask = nil
         pruneTask?.cancel()
         pruneTask = nil
+        isScanning = false
     }
 
     /// Upsert a discovered peripheral, throttling repeat advertisements.

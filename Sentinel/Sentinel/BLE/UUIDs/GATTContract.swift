@@ -55,7 +55,7 @@ enum SentinelServiceUUID: String, CaseIterable {
 
 /// firmware: sentinel_gatt_bme280.hpp. One packed ``BME280Sample`` per the
 /// one-shot-sample rule (the driver returns T/H/P in a single read).
-enum BME280CharacteristicUUID: String {
+enum BME280CharacteristicUUID: String, CaseIterable {
     /// R/Notify — `BME280Sample` (8 B packed). firmware: CHAR_BME280_AMBIENT_SAMPLE.
     case ambientSample = "11AC7ECD-3752-4300-A600-7790721AD4C5"
     nonisolated var cbuuid: CBUUID { CBUUID(string: rawValue) }
@@ -63,7 +63,7 @@ enum BME280CharacteristicUUID: String {
 
 /// firmware: sentinel_gatt_ds3231.hpp. Registers are independent → one
 /// characteristic each (not a packed struct).
-enum DS3231CharacteristicUUID: String {
+enum DS3231CharacteristicUUID: String, CaseIterable {
     /// R/W — `UInt32` seconds since 1970. firmware: CHAR_DS3231_UNIX_TIME.
     case unixTime = "2021C969-6F28-4A17-9347-ABEE83337EE1"
     /// R/Notify — `Int16` 0.01 °C. firmware: CHAR_DS3231_RTC_TEMPERATURE.
@@ -76,7 +76,7 @@ enum DS3231CharacteristicUUID: String {
 // MARK: - Aggregate / cross-cutting services
 
 /// firmware: sentinel_gatt_system.hpp.
-enum SystemCharacteristicUUID: String {
+enum SystemCharacteristicUUID: String, CaseIterable {
     /// R/W — `UInt32` device-identity key. firmware: CHAR_SYSTEM_SERIAL_NUMBER.
     case serialNumber = "49666C6D-2A24-4978-B4E5-A3C3D5B18B93"
     /// R — `FirmwareVersion` (5 B). firmware: CHAR_SYSTEM_FIRMWARE_VERSION.
@@ -91,7 +91,7 @@ enum SystemCharacteristicUUID: String {
 }
 
 /// firmware: sentinel_gatt_snapshot_stream.hpp.
-enum SnapshotStreamCharacteristicUUID: String {
+enum SnapshotStreamCharacteristicUUID: String, CaseIterable {
     /// R/Notify — `DeviceSnapshot` (80 B). firmware: CHAR_SNAPSHOT_STREAM_CURRENT_DEVICE_SNAPSHOT.
     case currentDeviceSnapshot = "B1D01D8B-32EB-491B-943D-E24C2527FCA0"
     /// R/W — `UInt8`. firmware: CHAR_SNAPSHOT_STREAM_SNAPSHOT_NOTIFY_ENABLE.
@@ -101,7 +101,7 @@ enum SnapshotStreamCharacteristicUUID: String {
 
 /// firmware: sentinel_gatt_paged.hpp (SNAPSHOT_HISTORY). Paged store — see
 /// ``PagedStoreReader``.
-enum SnapshotHistoryCharacteristicUUID: String {
+enum SnapshotHistoryCharacteristicUUID: String, CaseIterable {
     /// R — `UInt32`. firmware: CHAR_SNAPSHOT_HISTORY_RECORD_COUNT.
     case recordCount = "DAF37BD0-CD19-497E-98C7-2F119F0CDD16"
     /// R/W — `UInt32` read cursor. firmware: CHAR_SNAPSHOT_HISTORY_INDEX.
@@ -114,7 +114,7 @@ enum SnapshotHistoryCharacteristicUUID: String {
 }
 
 /// firmware: sentinel_gatt_paged.hpp (SYSTEM_EVENT_LOG). Paged store.
-enum SystemEventLogCharacteristicUUID: String {
+enum SystemEventLogCharacteristicUUID: String, CaseIterable {
     /// R — `UInt32`. firmware: CHAR_SYSTEM_EVENT_LOG_RECORD_COUNT.
     case recordCount = "A6B48D8A-F48D-4036-9A64-CEE4F8928E85"
     /// R/W — `UInt32` read cursor. firmware: CHAR_SYSTEM_EVENT_LOG_INDEX.
@@ -127,7 +127,7 @@ enum SystemEventLogCharacteristicUUID: String {
 }
 
 /// firmware: OTA FW Upgrade Service (Infineon standard).
-enum OTACharacteristicUUID: String {
+enum OTACharacteristicUUID: String, CaseIterable {
     /// W/Notify/Indicate. firmware: CHAR_OTA_FW_UPGRADE_SERVICE_OTA_UPGRADE_CONTROL_POINT.
     case controlPoint = "A3DD50BF-F7A7-4E99-838E-570A086C661B"
     /// W. firmware: CHAR_OTA_FW_UPGRADE_SERVICE_OTA_UPGRADE_DATA.
@@ -136,7 +136,7 @@ enum OTACharacteristicUUID: String {
 }
 
 /// firmware: sentinel_gatt_debug.hpp.
-enum DebugStreamCharacteristicUUID: String {
+enum DebugStreamCharacteristicUUID: String, CaseIterable {
     /// R/Notify — UTF-8 (≤128 B). firmware: CHAR_DEBUG_OUTPUT_STREAM.
     case outputStream = "83F4C70C-D09E-4C0C-8835-3B8CFA2202D9"
     /// R/W — `UInt8`. firmware: CHAR_DEBUG_OUTPUT_STREAM_NOTIFY_ENABLE.

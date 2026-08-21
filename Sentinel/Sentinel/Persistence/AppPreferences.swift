@@ -99,4 +99,12 @@ enum PressureUnit: String, CaseIterable, Sendable {
         case .inchesOfMercury: value * 0.029529983
         }
     }
+
+    /// Decimal places to display for this unit — chosen to reflect the BME280's
+    /// **±1 hPa accuracy**, not its finer resolution (avoids false precision).
+    /// hPa/kPa → 1 (e.g. `1013.2 hPa`, `101.3 kPa`, the meteorological convention);
+    /// inHg → 2 (`29.92 inHg`, the standard inHg step ≈ 0.34 hPa).
+    var displayFractionDigits: Int {
+        self == .inchesOfMercury ? 2 : 1
+    }
 }

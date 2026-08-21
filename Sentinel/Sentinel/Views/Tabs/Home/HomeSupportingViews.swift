@@ -65,8 +65,7 @@ struct ClimateHeroCard: View {
             return "—"
         }
         let value = prefs.pressureUnit.convert(hectopascals: sample.pressureHectopascals)
-        let fraction = prefs.pressureUnit == .inchesOfMercury ? 2 : (prefs.pressureUnit == .kilopascals ? 1 : 0)
-        return value.formatted(.number.precision(.fractionLength(fraction)))
+        return value.formatted(.number.precision(.fractionLength(prefs.pressureUnit.displayFractionDigits)))
     }
 }
 
@@ -110,7 +109,7 @@ enum ClimateTrendMetric: String, CaseIterable, Identifiable {
     func fractionDigits(_ prefs: AppPreferences) -> Int {
         switch self {
         case .temperature, .humidity: 1
-        case .pressure: prefs.pressureUnit == .inchesOfMercury ? 2 : (prefs.pressureUnit == .kilopascals ? 1 : 0)
+        case .pressure: prefs.pressureUnit.displayFractionDigits
         }
     }
 
@@ -138,14 +137,15 @@ struct ClimateHistoryDetail: View {
     var body: some View {
         List(snapshots, id: \.unixTimestamp) { snap in
             VStack(alignment: .leading, spacing: 4) {
-                Text(snap.timestamp, format: .dateTime.month().day().hour().minute())
+                Text(snap.timestamp, format: .dateTime.year().month().day().hour().minute().second())
                     .font(.subheadline)
                 HStack(spacing: 16) {
                     Text(HomeView.temperatureText(centiC: snap.temperatureCentiDegC, prefs: prefs))
                     Text(snap.humidityPercent.formatted(.number.precision(.fractionLength(1))) + " %")
                     Text(
                         prefs.pressureUnit.convert(hectopascals: snap.pressureHectopascals)
-                            .formatted(.number.precision(.fractionLength(0))) + " " + prefs.pressureUnit.symbol
+                            .formatted(.number.precision(.fractionLength(prefs.pressureUnit.displayFractionDigits)))
+                            + " " + prefs.pressureUnit.symbol
                     )
                 }
                 .font(.caption)
@@ -170,7 +170,7 @@ struct RealTimeClockHistoryDetail: View {
     var body: some View {
         List(snapshots, id: \.unixTimestamp) { snap in
             VStack(alignment: .leading, spacing: 4) {
-                Text(snap.timestamp, format: .dateTime.month().day().hour().minute().second())
+                Text(snap.timestamp, format: .dateTime.year().month().day().hour().minute().second())
                     .font(.subheadline)
                 HStack(spacing: 16) {
                     Label(

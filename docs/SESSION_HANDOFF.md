@@ -20,6 +20,69 @@ the architecture docs rather than letting them accumulate here.
 
 ---
 
+**Last updated:** 2026-08-21 (session 6) — **#17 SnapshotLoggingView DONE** — the
+whole generic snapshot-logging + charting + export subsystem, faithfully ported
+from the proven prior design and adapted to Sentinel. **On feature branch
+`17-snapshot-logging`** (8 incremental commits, tag `17-snapshot-logging-history`
+at the tip); **NOT yet squash-merged to `develop`** — left for a review pass
+given its size (56 files, ~+7900 lines). Build + SwiftFormat + SwiftLint + all
+`SentinelTests` green (13 new tests). To land it, follow the branch workflow:
+squash-merge `17-snapshot-logging` → `develop`, delete the branch (history
+preserved by the tag).
+
+- **Layout:** model + engine under `Sentinel/Snapshots/` (`Model/Common`,
+  `Model/DeviceSnapshot`, `Managers`); views under `Views/Tabs/Snapshots/`. The
+  Xcode project uses synchronized folders, so new files are picked up with no
+  `.pbxproj` edits.
+- **Architecture (kept generic):** `Snapshot` protocol + type-erased value/field
+  system + `SnapshotDataProvider` → one `SnapshotLoggingManager<Provider>` drives
+  every snapshot type. `DeviceSnapshot` is the Phase I conformer; its field
+  catalog/categories reflect the **real firmware telemetry** (environment / RTC /
+  storage / BLE / health). Views are generic over `Provider` and specialized to
+  `DeviceSnapshotDataProvider` at the `SnapshotLoggingView(peer:)` entry point.
+- **Sentinel adaptations vs. the source design (all deliberate):** BLE I/O flows
+  through the connection's `SnapshotStreamService` (+ `SystemService` for device
+  identity via an injected async metadata closure) instead of a monolithic BLE
+  manager; notifications use its `AsyncStream`. Value/persistence types are
+  `nonisolated` (target is `SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor`; disk
+  decode runs on a detached task). `.voomsession`→`.sentinelsession` (magic
+  "SNTL"); "POC"→"device" throughout (incl. `deviceUnixTimeMs`,
+  `deviceToReadLatency`, `deviceTimestampPeriod` timing ids). **Dropped** the
+  source's UserDefaults→binary migration path (no legacy Sentinel sessions).
+  Navigation is the per-tab `NavigationStack` + a `SnapshotRoute` enum (the
+  Sentinel analogue of the source's router). The export **preview reuses the real
+  exporter on a truncated session** (no duplicated CSV/JSON formatting — preview
+  is byte-for-byte the output). Capture supports **both** polling and
+  notifications (the source had deprecated polling).
+- **The one genuinely-new deliverable — long-session chart perf — is done:**
+  `ChartDecimator` (min/max-per-bucket for numeric series, transitions-only for
+  boolean step-lines, viewport slice). The inline session chart decimates the
+  displayed series (cached in `@State`, recomputed only on load/selection). The
+  **full-screen chart** does real pinch-zoom + drag-pan + tap-scrub with
+  **viewport-aware re-decimation** (debounced ~30ms) and `.drawingGroup()`. Full
+  resolution stays on disk and in exports. (Note: the source's full-screen "zoom"
+  state was inert; here zoom/pan actually drive the viewport.)
+- **Known follow-ups / gaps (not blockers):** (1) active-session teardown on
+  disconnect relies on crash-recovery + explicit Stop rather than a
+  `stopOnDisconnect` hook — the manager is per-connection and torn down with the
+  subtree; a footer-on-teardown pass would be cleaner. (2) Sort preference is
+  local `@State` (not persisted) — the source persisted it via a `PresentationState`
+  store Sentinel doesn't have. (3) No SwiftUI previews were added for the new
+  views (they need the manager in the environment); the "preview simulation stack"
+  seam could seed one. (4) Perf is engineered to the acceptance targets but not
+  yet measured against a real ~36k-sample capture on device.
+- **voomair (the port source):** keep it available through any immediate #17
+  finish-up; after this lands, `sentinel-client` is self-sufficient for the
+  snapshot feature (drop voomair unless a later issue ports another subsystem,
+  e.g. the #25/#34 debug-stream UI).
+
+**⏭️ PICK UP HERE (next session):** review + squash-merge #17 to `develop` (and
+`--no-ff` develop → main if batching a release), then the post-#17 roadmap:
+client #25 DebugOutputStreamView + #34 decode (together), #37 main menu / #38
+MainTabView gating, firmware #68 (RTC SQW) / #69 device readiness.
+
+---
+
 **Last updated:** 2026-08-19 (session 5) — **#18 DeviceView + #15 HomeView DONE,
 landed on `develop` as two separated commits.** Build + lint + tests green
 (9 new `CharacteristicCatalogTests`). **Now on `develop`** (linear, **not pushed**):

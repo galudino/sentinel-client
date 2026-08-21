@@ -101,13 +101,11 @@ nonisolated enum ChartDecimator {
     static func transitionsOnly(_ points: [ChartDataPoint]) -> [ChartDataPoint] {
         guard points.count > 2 else { return points }
         var result: [ChartDataPoint] = [points[0]]
-        for index in 1 ..< points.count {
-            if points[index].value != points[index - 1].value {
-                if result.last?.sampleNumber != points[index - 1].sampleNumber {
-                    result.append(points[index - 1]) // hold the level up to the transition
-                }
-                result.append(points[index])
+        for index in 1 ..< points.count where points[index].value != points[index - 1].value {
+            if result.last?.sampleNumber != points[index - 1].sampleNumber {
+                result.append(points[index - 1]) // hold the level up to the transition
             }
+            result.append(points[index])
         }
         if let last = points.last, last.sampleNumber != result.last?.sampleNumber {
             result.append(last)

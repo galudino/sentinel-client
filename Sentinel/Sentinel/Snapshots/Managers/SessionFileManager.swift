@@ -37,6 +37,16 @@ nonisolated struct SessionIndexEntry: Codable, Identifiable {
     let autoSaveInterval: TimeInterval?
 }
 
+// MARK: - LoadedSessionFile
+
+/// The decoded contents of a `.sentinelsession` file: the header, every entry,
+/// and the footer (`nil` if the session ended without one — e.g. a crash).
+nonisolated struct LoadedSessionFile {
+    let header: SessionFileHeader
+    let entries: [SnapshotLogEntry]
+    let footer: SessionFileFooter?
+}
+
 // MARK: - SessionFileManager
 
 /// Owns the `.sentinelsession` binary files and the JSON session index in
@@ -155,9 +165,7 @@ final nonisolated class SessionFileManager: @unchecked Sendable {
 
     /// Read and decode the whole session file. For long sessions call this off the
     /// main actor.
-    func loadEntries(
-        for sessionId: UUID
-    ) throws -> (header: SessionFileHeader, entries: [SnapshotLogEntry], footer: SessionFileFooter?) {
+    func loadEntries(for sessionId: UUID) throws -> LoadedSessionFile {
         let data = try Data(contentsOf: sessionFileURL(for: sessionId))
         let reader = BinaryReader(data: data)
         let header = try SessionFileHeader.decode(from: reader)
@@ -197,7 +205,7 @@ final nonisolated class SessionFileManager: @unchecked Sendable {
             }
         }
 
-        return (header, entries, footer)
+        return LoadedSessionFile(header: header, entries: entries, footer: footer)
     }
 
     // MARK: Deletion

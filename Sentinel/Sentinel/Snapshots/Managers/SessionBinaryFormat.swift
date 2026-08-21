@@ -5,14 +5,12 @@
 //  Created by Gemuele Aludino on 8/21/26.
 //
 
-// swiftlint:disable file_length type_body_length identifier_name
-
 import Foundation
 
 // MARK: - SessionBinaryFormat Constants
 
 /// Codec for the `.sentinelsession` binary file format used to persist a capture
-/// session to disk.
+/// session to disk. The low-level byte reader/writer live in `BinaryCoding.swift`.
 ///
 /// ```
 /// [Header]  — session metadata + field schema (written once at session start)
@@ -112,210 +110,6 @@ nonisolated struct SessionFileFooter {
     let entryCount: UInt32
 }
 
-// MARK: - BinaryWriter
-
-/// Appends primitive values to an internal little-endian `Data` buffer.
-final nonisolated class BinaryWriter {
-    private(set) var data: Data
-
-    init(capacity: Int = 4096) {
-        data = Data()
-        data.reserveCapacity(capacity)
-    }
-
-    // MARK: Primitive writes
-
-    func writeBytes(_ bytes: [UInt8]) { data.append(contentsOf: bytes) }
-    func writeUInt8(_ value: UInt8) { data.append(value) }
-    func writeBool(_ value: Bool) { writeUInt8(value ? 1 : 0) }
-
-    func writeUInt16(_ value: UInt16) {
-        withUnsafeBytes(of: value.littleEndian) { data.append(contentsOf: $0) }
-    }
-
-    func writeUInt32(_ value: UInt32) {
-        withUnsafeBytes(of: value.littleEndian) { data.append(contentsOf: $0) }
-    }
-
-    func writeUInt64(_ value: UInt64) {
-        withUnsafeBytes(of: value.littleEndian) { data.append(contentsOf: $0) }
-    }
-
-    func writeFloat32(_ value: Float32) { writeUInt32(value.bitPattern) }
-    func writeFloat64(_ value: Float64) { writeUInt64(value.bitPattern) }
-
-    // MARK: Compound writes
-
-    func writeString(_ value: String) {
-        let utf8 = Array(value.utf8)
-        writeUInt16(UInt16(utf8.count))
-        data.append(contentsOf: utf8)
-    }
-
-    func writeUUID(_ value: UUID) {
-        let u = value.uuid
-        data.append(contentsOf: [
-            u.0, u.1, u.2, u.3, u.4, u.5, u.6, u.7,
-            u.8, u.9, u.10, u.11, u.12, u.13, u.14, u.15
-        ])
-    }
-
-    func writeDate(_ date: Date) { writeFloat64(date.timeIntervalSince1970) }
-
-    func writeOptionalFloat64(_ value: Double?) {
-        if let value {
-            writeUInt8(1)
-            writeFloat64(value)
-        } else {
-            writeUInt8(0)
-        }
-    }
-
-    func writeOptionalUInt64(_ value: UInt64?) {
-        if let value {
-            writeUInt8(1)
-            writeUInt64(value)
-        } else {
-            writeUInt8(0)
-        }
-    }
-
-    func writeOptionalDate(_ date: Date?) { writeOptionalFloat64(date?.timeIntervalSince1970) }
-
-    // MARK: Snapshot value
-
-    func writeSnapshotValue(_ value: SnapshotValue) {
-        switch value {
-        case let .bool(v): writeUInt8(0); writeBool(v)
-        case let .uint8(v): writeUInt8(1); writeUInt8(v)
-        case let .uint16(v): writeUInt8(2); writeUInt16(v)
-        case let .uint32(v): writeUInt8(3); writeUInt32(v)
-        case let .uint64(v): writeUInt8(4); writeUInt64(v)
-        case let .float32(v): writeUInt8(5); writeFloat32(v)
-        case let .string(v): writeUInt8(6); writeString(v)
-        case let .error(v): writeUInt8(7); writeString(v)
-        }
-    }
-}
-
-// MARK: - BinaryReader
-
-/// Reads primitive values sequentially from a little-endian `Data` buffer.
-final nonisolated class BinaryReader {
-    private let data: Data
-    var offset: Int
-
-    var bytesRemaining: Int { data.count - offset }
-    var isAtEnd: Bool { offset >= data.count }
-
-    init(data: Data) {
-        self.data = data
-        offset = 0
-    }
-
-    // MARK: Primitive reads
-
-    func readUInt8() throws -> UInt8 {
-        guard offset + 1 <= data.count else { throw BinaryFormatError.unexpectedEndOfData }
-        let value = data[data.startIndex + offset]
-        offset += 1
-        return value
-    }
-
-    func readBool() throws -> Bool { try readUInt8() != 0 }
-
-    func readUInt16() throws -> UInt16 {
-        guard offset + 2 <= data.count else { throw BinaryFormatError.unexpectedEndOfData }
-        let b0 = UInt16(data[data.startIndex + offset])
-        let b1 = UInt16(data[data.startIndex + offset + 1])
-        offset += 2
-        return b0 | (b1 << 8)
-    }
-
-    func readUInt32() throws -> UInt32 {
-        guard offset + 4 <= data.count else { throw BinaryFormatError.unexpectedEndOfData }
-        let b0 = UInt32(data[data.startIndex + offset])
-        let b1 = UInt32(data[data.startIndex + offset + 1])
-        let b2 = UInt32(data[data.startIndex + offset + 2])
-        let b3 = UInt32(data[data.startIndex + offset + 3])
-        offset += 4
-        return b0 | (b1 << 8) | (b2 << 16) | (b3 << 24)
-    }
-
-    func readUInt64() throws -> UInt64 {
-        guard offset + 8 <= data.count else { throw BinaryFormatError.unexpectedEndOfData }
-        var value: UInt64 = 0
-        for i in 0 ..< 8 {
-            value |= UInt64(data[data.startIndex + offset + i]) << (i * 8)
-        }
-        offset += 8
-        return value
-    }
-
-    func readFloat32() throws -> Float32 { try Float32(bitPattern: readUInt32()) }
-    func readFloat64() throws -> Float64 { try Float64(bitPattern: readUInt64()) }
-
-    // MARK: Compound reads
-
-    func readString() throws -> String {
-        let length = try Int(readUInt16())
-        guard offset + length <= data.count else { throw BinaryFormatError.unexpectedEndOfData }
-        let slice = data[data.startIndex + offset ..< data.startIndex + offset + length]
-        offset += length
-        guard let string = String(data: slice, encoding: .utf8) else {
-            throw BinaryFormatError.invalidString
-        }
-        return string
-    }
-
-    func readUUID() throws -> UUID {
-        guard offset + 16 <= data.count else { throw BinaryFormatError.unexpectedEndOfData }
-        var bytes = [UInt8](repeating: 0, count: 16)
-        for i in 0 ..< 16 {
-            bytes[i] = data[data.startIndex + offset + i]
-        }
-        offset += 16
-        return UUID(uuid: (
-            bytes[0], bytes[1], bytes[2], bytes[3],
-            bytes[4], bytes[5], bytes[6], bytes[7],
-            bytes[8], bytes[9], bytes[10], bytes[11],
-            bytes[12], bytes[13], bytes[14], bytes[15]
-        ))
-    }
-
-    func readDate() throws -> Date { try Date(timeIntervalSince1970: readFloat64()) }
-
-    func readOptionalFloat64() throws -> Double? {
-        try readUInt8() == 1 ? try readFloat64() : nil
-    }
-
-    func readOptionalUInt64() throws -> UInt64? {
-        try readUInt8() == 1 ? try readUInt64() : nil
-    }
-
-    func readOptionalDate() throws -> Date? {
-        guard let interval = try readOptionalFloat64() else { return nil }
-        return Date(timeIntervalSince1970: interval)
-    }
-
-    // MARK: Snapshot value
-
-    func readSnapshotValue() throws -> SnapshotValue {
-        let typeTag = try readUInt8()
-        switch typeTag {
-        case 0: return try .bool(readBool())
-        case 1: return try .uint8(readUInt8())
-        case 2: return try .uint16(readUInt16())
-        case 3: return try .uint32(readUInt32())
-        case 4: return try .uint64(readUInt64())
-        case 5: return try .float32(readFloat32())
-        case 6: return try .string(readString())
-        case 7: return try .error(readString())
-        default: throw BinaryFormatError.invalidValueType(typeTag)
-        }
-    }
-}
-
 // MARK: - Header Encoding
 
 nonisolated extension SessionFileHeader {
@@ -335,20 +129,8 @@ nonisolated extension SessionFileHeader {
         writer.writeUInt32(serialNumber)
         writer.writeString(firmwareVersion)
         writer.writeOptionalFloat64(autoSaveInterval)
-
-        let timingIds = Array(selectedTimingFieldIds)
-        writer.writeUInt16(UInt16(timingIds.count))
-        for id in timingIds {
-            writer.writeString(id)
-        }
-
-        writer.writeUInt16(UInt16(fieldSchema.count))
-        for field in fieldSchema {
-            writer.writeString(field.keyPath)
-            writer.writeString(field.displayName)
-            writer.writeString(field.unit)
-            writer.writeUInt8(field.dataType.binaryTag)
-        }
+        writer.writeStrings(Array(selectedTimingFieldIds))
+        writer.writeFieldSchema(fieldSchema)
 
         // Header length, written last so a reader can skip straight to entries.
         writer.writeUInt32(UInt32(writer.data.count + 4))
@@ -360,11 +142,7 @@ nonisolated extension SessionFileHeader {
 
 nonisolated extension SessionFileHeader {
     static func decode(from reader: BinaryReader) throws -> SessionFileHeader {
-        let m0 = try reader.readUInt8()
-        let m1 = try reader.readUInt8()
-        let m2 = try reader.readUInt8()
-        let m3 = try reader.readUInt8()
-        guard [m0, m1, m2, m3] == SessionBinaryFormat.magic else { throw BinaryFormatError.invalidMagic }
+        guard try reader.readMagic() == SessionBinaryFormat.magic else { throw BinaryFormatError.invalidMagic }
 
         let version = try reader.readUInt16()
         guard version == SessionBinaryFormat.currentVersion else {
@@ -383,25 +161,8 @@ nonisolated extension SessionFileHeader {
         let serialNumber = try reader.readUInt32()
         let firmwareVersion = try reader.readString()
         let autoSaveInterval = try reader.readOptionalFloat64()
-
-        let timingIdCount = try Int(reader.readUInt16())
-        var timingIds = Set<String>()
-        for _ in 0 ..< timingIdCount {
-            try timingIds.insert(reader.readString())
-        }
-
-        let fieldCount = try Int(reader.readUInt16())
-        var fieldSchema: [BinaryFieldSchema] = []
-        for _ in 0 ..< fieldCount {
-            let keyPath = try reader.readString()
-            let displayName = try reader.readString()
-            let unit = try reader.readString()
-            let dataType = try SnapshotFieldDataType.fromBinaryTag(reader.readUInt8())
-            fieldSchema.append(BinaryFieldSchema(
-                keyPath: keyPath, displayName: displayName, unit: unit, dataType: dataType
-            ))
-        }
-
+        let timingIds = try Set(reader.readStrings())
+        let fieldSchema = try reader.readFieldSchema()
         _ = try reader.readUInt32() // header length — consumed, not needed
 
         return SessionFileHeader(
@@ -471,7 +232,27 @@ nonisolated extension SessionBinaryFormat {
 
         let timestamp = try reader.readDate()
         let deviceUnixTimeMs = try reader.readOptionalUInt64()
+        let timing = try decodeTiming(from: reader, captureMode: captureMode)
+        let fieldValues = try decodeFieldValues(from: reader, schema: schema)
 
+        return SnapshotLogEntry(
+            id: UUID(),
+            timestamp: timestamp,
+            fieldValues: fieldValues,
+            deviceUnixTimeMs: deviceUnixTimeMs,
+            scheduledTick: timing.scheduledTick,
+            actualStart: timing.actualStart,
+            actualFinishRead: timing.actualFinishRead,
+            finishCycle: timing.finishCycle,
+            latencySeconds: timing.latencySeconds,
+            readDurationSeconds: timing.readDurationSeconds,
+            cycleDurationSeconds: timing.cycleDurationSeconds,
+            interNotificationInterval: timing.interNotificationInterval
+        )
+    }
+
+    /// The per-entry timing diagnostics, whose layout depends on the capture mode.
+    private struct EntryTiming {
         var scheduledTick: Date?
         var actualStart: Date?
         var actualFinishRead: Date?
@@ -480,50 +261,48 @@ nonisolated extension SessionBinaryFormat {
         var readDurationSeconds: Double?
         var cycleDurationSeconds: Double?
         var interNotificationInterval: Double?
+    }
 
+    private static func decodeTiming(
+        from reader: BinaryReader,
+        captureMode: SnapshotCaptureMode
+    ) throws -> EntryTiming {
+        var timing = EntryTiming()
         if captureMode == .polling {
-            scheduledTick = try reader.readOptionalDate()
-            actualStart = try reader.readOptionalDate()
-            actualFinishRead = try reader.readOptionalDate()
-            finishCycle = try reader.readOptionalDate()
-            latencySeconds = try reader.readOptionalFloat64()
-            readDurationSeconds = try reader.readOptionalFloat64()
-            cycleDurationSeconds = try reader.readOptionalFloat64()
+            timing.scheduledTick = try reader.readOptionalDate()
+            timing.actualStart = try reader.readOptionalDate()
+            timing.actualFinishRead = try reader.readOptionalDate()
+            timing.finishCycle = try reader.readOptionalDate()
+            timing.latencySeconds = try reader.readOptionalFloat64()
+            timing.readDurationSeconds = try reader.readOptionalFloat64()
+            timing.cycleDurationSeconds = try reader.readOptionalFloat64()
         } else {
-            actualStart = try reader.readOptionalDate()
-            interNotificationInterval = try reader.readOptionalFloat64()
+            timing.actualStart = try reader.readOptionalDate()
+            timing.interNotificationInterval = try reader.readOptionalFloat64()
         }
+        return timing
+    }
 
+    private static func decodeFieldValues(
+        from reader: BinaryReader,
+        schema: [BinaryFieldSchema]
+    ) throws -> [SnapshotFieldValue] {
         let fieldCount = try Int(reader.readUInt16())
-        var fieldValues: [SnapshotFieldValue] = []
-        for i in 0 ..< fieldCount {
+        return try (0 ..< fieldCount).map { index in
             let value = try reader.readSnapshotValue()
-            let fieldInfo = i < schema.count
-                ? schema[i]
-                : BinaryFieldSchema(keyPath: "unknown_\(i)", displayName: "Unknown \(i)", unit: "", dataType: .string)
-            fieldValues.append(SnapshotFieldValue(
-                displayName: fieldInfo.displayName,
-                keyPath: fieldInfo.keyPath,
+            let info = index < schema.count
+                ? schema[index]
+                : BinaryFieldSchema(
+                    keyPath: "unknown_\(index)", displayName: "Unknown \(index)", unit: "", dataType: .string
+                )
+            return SnapshotFieldValue(
+                displayName: info.displayName,
+                keyPath: info.keyPath,
                 value: value,
-                unit: fieldInfo.unit,
-                dataType: fieldInfo.dataType
-            ))
+                unit: info.unit,
+                dataType: info.dataType
+            )
         }
-
-        return SnapshotLogEntry(
-            id: UUID(),
-            timestamp: timestamp,
-            fieldValues: fieldValues,
-            deviceUnixTimeMs: deviceUnixTimeMs,
-            scheduledTick: scheduledTick,
-            actualStart: actualStart,
-            actualFinishRead: actualFinishRead,
-            finishCycle: finishCycle,
-            latencySeconds: latencySeconds,
-            readDurationSeconds: readDurationSeconds,
-            cycleDurationSeconds: cycleDurationSeconds,
-            interNotificationInterval: interNotificationInterval
-        )
     }
 }
 
@@ -554,5 +333,3 @@ nonisolated extension SessionFileFooter {
         return SessionFileFooter(endTime: endTime, duration: duration, status: status, entryCount: entryCount)
     }
 }
-
-// swiftlint:enable file_length type_body_length identifier_name

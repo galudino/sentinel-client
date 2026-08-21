@@ -53,62 +53,25 @@ extension SnapshotLoggingManager {
 
     // MARK: JSON
 
-    // swiftlint:disable:next function_body_length
     private func exportSessionAsJSON(
         _ session: SnapshotLoggingSession,
         selectedFieldKeyPaths: Set<String>?,
         selectedTimingFieldIds: Set<String>?
     ) -> Data? {
-        let pollingIntervalMs = UInt32(session.pollingInterval * 1000)
-        let isPollingMode = session.captureMode == .polling
-
-        var fieldSchema: [[String: Any]] = []
-        if let firstEntry = session.logEntries.first {
-            let fields = filteredFieldValues(firstEntry.fieldValues, keyPaths: selectedFieldKeyPaths)
-            fieldSchema = fields.map {
-                [
-                    "id": $0.id.uuidString,
-                    "displayName": $0.displayName,
-                    "keyPath": $0.keyPath,
-                    "unit": $0.unit,
-                    "dataType": $0.dataType.rawValue
-                ]
-            }
+        var exportData = jsonSessionMetadata(session)
+        exportData["fields"] = jsonFieldSchema(session, keyPaths: selectedFieldKeyPaths)
+        exportData["entries"] = session.logEntries.enumerated().map { index, entry in
+            jsonEntry(
+                entry, index: index, session: session,
+                selectedFieldKeyPaths: selectedFieldKeyPaths,
+                selectedTimingFieldIds: selectedTimingFieldIds
+            )
         }
+        return try? JSONSerialization.data(withJSONObject: exportData, options: [.prettyPrinted, .sortedKeys])
+    }
 
-        let entries: [[String: Any]] = session.logEntries.enumerated().map { index, entry in
-            var entryDict: [String: Any] = [
-                "id": entry.id.uuidString,
-                "timestamp": formatDateWithMicroseconds(entry.timestamp),
-                "timestampUnix": formatUnixTimestamp(entry.timestamp),
-                "values": filteredFieldValues(entry.fieldValues, keyPaths: selectedFieldKeyPaths).map {
-                    [$0.id.uuidString: provider.formatValueForExport($0.value, keyPath: $0.keyPath)]
-                }
-            ]
-
-            if shouldIncludeTimingField("deviceTimestamp", selectedTimingFieldIds: selectedTimingFieldIds),
-               let millis = entry.deviceUnixTimeMs
-            {
-                entryDict["deviceTimestamp"] =
-                    formatDateWithMicroseconds(Date(timeIntervalSince1970: Double(millis) / 1000))
-                entryDict["deviceTimestampUnixMs"] = millis
-            }
-            if shouldIncludeTimingField("deviceTimestampPeriod", selectedTimingFieldIds: selectedTimingFieldIds),
-               let periodMs = calculateDeviceTimestampPeriodMs(entries: session.logEntries, index: index)
-            {
-                entryDict["deviceTimestampPeriodMs"] = periodMs
-            }
-
-            if isPollingMode {
-                entryDict["timeSampleMs"] = UInt32(index) * pollingIntervalMs
-                addPollingTimingJSON(&entryDict, entry: entry, selectedTimingFieldIds: selectedTimingFieldIds)
-            } else {
-                addNotificationTimingJSON(&entryDict, entry: entry, selectedTimingFieldIds: selectedTimingFieldIds)
-            }
-            return entryDict
-        }
-
-        var exportData: [String: Any] = [
+    private func jsonSessionMetadata(_ session: SnapshotLoggingSession) -> [String: Any] {
+        var data: [String: Any] = [
             "snapshotType": provider.snapshotTypeIdentifier,
             "sessionId": session.id.uuidString,
             "sessionName": session.name,
@@ -121,13 +84,59 @@ extension SnapshotLoggingManager {
             "firmwareVersion": session.firmwareVersion,
             "status": session.status.rawValue,
             "entryCount": session.logEntries.count,
-            "stopOnDisconnect": session.stopOnDisconnect,
-            "fields": fieldSchema,
-            "entries": entries
+            "stopOnDisconnect": session.stopOnDisconnect
         ]
-        if let maxDuration = session.maxDuration { exportData["maxDuration"] = maxDuration }
+        if let maxDuration = session.maxDuration { data["maxDuration"] = maxDuration }
+        return data
+    }
 
-        return try? JSONSerialization.data(withJSONObject: exportData, options: [.prettyPrinted, .sortedKeys])
+    private func jsonFieldSchema(_ session: SnapshotLoggingSession, keyPaths: Set<String>?) -> [[String: Any]] {
+        guard let firstEntry = session.logEntries.first else { return [] }
+        return filteredFieldValues(firstEntry.fieldValues, keyPaths: keyPaths).map {
+            [
+                "id": $0.id.uuidString,
+                "displayName": $0.displayName,
+                "keyPath": $0.keyPath,
+                "unit": $0.unit,
+                "dataType": $0.dataType.rawValue
+            ]
+        }
+    }
+
+    private func jsonEntry(
+        _ entry: SnapshotLogEntry,
+        index: Int,
+        session: SnapshotLoggingSession,
+        selectedFieldKeyPaths: Set<String>?,
+        selectedTimingFieldIds: Set<String>?
+    ) -> [String: Any] {
+        func include(_ id: String) -> Bool {
+            shouldIncludeTimingField(id, selectedTimingFieldIds: selectedTimingFieldIds)
+        }
+        var entryDict: [String: Any] = [
+            "id": entry.id.uuidString,
+            "timestamp": formatDateWithMicroseconds(entry.timestamp),
+            "timestampUnix": formatUnixTimestamp(entry.timestamp),
+            "values": filteredFieldValues(entry.fieldValues, keyPaths: selectedFieldKeyPaths).map {
+                [$0.id.uuidString: provider.formatValueForExport($0.value, keyPath: $0.keyPath)]
+            }
+        ]
+        if include("deviceTimestamp"), let millis = entry.deviceUnixTimeMs {
+            entryDict["deviceTimestamp"] =
+                formatDateWithMicroseconds(Date(timeIntervalSince1970: Double(millis) / 1000))
+            entryDict["deviceTimestampUnixMs"] = millis
+        }
+        let periodMs = calculateDeviceTimestampPeriodMs(entries: session.logEntries, index: index)
+        if include("deviceTimestampPeriod"), let periodMs {
+            entryDict["deviceTimestampPeriodMs"] = periodMs
+        }
+        if session.captureMode == .polling {
+            entryDict["timeSampleMs"] = UInt32(index) * UInt32(session.pollingInterval * 1000)
+            addPollingTimingJSON(&entryDict, entry: entry, selectedTimingFieldIds: selectedTimingFieldIds)
+        } else {
+            addNotificationTimingJSON(&entryDict, entry: entry, selectedTimingFieldIds: selectedTimingFieldIds)
+        }
+        return entryDict
     }
 
     private func addPollingTimingJSON(
@@ -233,39 +242,43 @@ extension SnapshotLoggingManager {
         return csvData
     }
 
-    // swiftlint:disable:next cyclomatic_complexity
-    private func buildCSVHeaders(isPollingMode: Bool, selectedTimingFieldIds: Set<String>?) -> [String] {
-        func include(_ id: String) -> Bool {
-            shouldIncludeTimingField(id, selectedTimingFieldIds: selectedTimingFieldIds)
-        }
-        var headers: [String] = []
+    /// The ordered timing columns for a capture mode, as (timing-field id, header
+    /// labels). An empty id means the column is always present.
+    private func timingColumns(isPollingMode: Bool) -> [(id: String, headers: [String])] {
         if isPollingMode {
-            headers.append("Time Sample (ms)")
-            if include("deviceTimestamp") { headers += ["Device Timestamp", "Device Timestamp (Unix ms)"] }
-            if include("deviceTimestampPeriod") { headers.append("Device Timestamp Period (ms)") }
-            if include("scheduledStartCycle") { headers += ["Scheduled Start Cycle", "Scheduled Start Cycle (Unix ms)"]
-            }
-            if include("actualStartRead") { headers += ["Actual Start Read", "Actual Start Read (Unix ms)"] }
-            if include("actualFinishRead") { headers += ["Actual Finish Read", "Actual Finish Read (Unix ms)"] }
-            if include("finishCycle") { headers += ["Finish Cycle", "Finish Cycle (Unix ms)"] }
-            if include("scheduleToReadLatency") { headers.append("Schedule-to-Read Latency (ms)") }
-            if include("deviceToReadLatency") { headers.append("Device-to-Read Latency (ms)") }
-            if include("bleReadDuration") { headers.append("BLE Read Duration (ms)") }
-            if include("cycleDuration") { headers.append("Cycle Duration (ms)") }
-        } else {
-            if include("deviceTimestamp") { headers += ["Device Timestamp", "Device Timestamp (Unix ms)"] }
-            if include("deviceTimestampPeriod") { headers.append("Device Timestamp Period (ms)") }
-            if include("notificationReceived") {
-                headers += ["Notification Received", "Notification Received (Unix ms)"]
-            }
-            if include("notificationLatency") { headers.append("Notification Latency (ms)") }
-            if include("notificationPeriod") { headers.append("Notification Period (ms)") }
+            return [
+                ("", ["Time Sample (ms)"]),
+                ("deviceTimestamp", ["Device Timestamp", "Device Timestamp (Unix ms)"]),
+                ("deviceTimestampPeriod", ["Device Timestamp Period (ms)"]),
+                ("scheduledStartCycle", ["Scheduled Start Cycle", "Scheduled Start Cycle (Unix ms)"]),
+                ("actualStartRead", ["Actual Start Read", "Actual Start Read (Unix ms)"]),
+                ("actualFinishRead", ["Actual Finish Read", "Actual Finish Read (Unix ms)"]),
+                ("finishCycle", ["Finish Cycle", "Finish Cycle (Unix ms)"]),
+                ("scheduleToReadLatency", ["Schedule-to-Read Latency (ms)"]),
+                ("deviceToReadLatency", ["Device-to-Read Latency (ms)"]),
+                ("bleReadDuration", ["BLE Read Duration (ms)"]),
+                ("cycleDuration", ["Cycle Duration (ms)"])
+            ]
+        }
+        return [
+            ("deviceTimestamp", ["Device Timestamp", "Device Timestamp (Unix ms)"]),
+            ("deviceTimestampPeriod", ["Device Timestamp Period (ms)"]),
+            ("notificationReceived", ["Notification Received", "Notification Received (Unix ms)"]),
+            ("notificationLatency", ["Notification Latency (ms)"]),
+            ("notificationPeriod", ["Notification Period (ms)"])
+        ]
+    }
+
+    private func buildCSVHeaders(isPollingMode: Bool, selectedTimingFieldIds: Set<String>?) -> [String] {
+        var headers = timingColumns(isPollingMode: isPollingMode).flatMap { column in
+            column.id.isEmpty || shouldIncludeTimingField(column.id, selectedTimingFieldIds: selectedTimingFieldIds)
+                ? column.headers
+                : []
         }
         headers += ["Serial Number", "Firmware Version"]
         return headers
     }
 
-    // swiftlint:disable:next function_body_length
     private func buildPollingCSVRow(
         entry: SnapshotLogEntry,
         index: Int,

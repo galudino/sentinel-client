@@ -15,7 +15,7 @@ nonisolated extension DeviceSnapshot: Snapshot {
 
     /// Device capture time in Unix milliseconds. The wire record carries seconds
     /// (`unixTimestamp`); the logging subsystem works in milliseconds.
-    var unixTime_ms: UInt64 { UInt64(unixTimestamp) * 1000 } // swiftlint:disable:this identifier_name
+    var unixTimeMs: UInt64 { UInt64(unixTimestamp) * 1000 }
 
     // MARK: Display metadata
 

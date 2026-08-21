@@ -13,18 +13,17 @@ import SwiftUI
 /// polling) and choose which fields to log, grouped by category with
 /// select-all / invert helpers and search.
 struct SnapshotCreateConfigurationView<Provider: SnapshotDataProvider>: View {
-    // swiftlint:disable:next type_name
-    typealias S = Provider.S
+    typealias SnapshotType = Provider.SnapshotType
 
     @Environment(SnapshotLoggingManager<Provider>.self) private var loggingManager
     @Environment(\.dismiss) private var dismiss
 
     @State private var configurationName = ""
-    @State private var selectedFields: [SnapshotFieldConfig<S>] = []
+    @State private var selectedFields: [SnapshotFieldConfig<SnapshotType>] = []
     @State private var captureMode: SnapshotCaptureMode = .notifications
     @State private var pollingInterval: Double = 0.3
     @State private var searchText = ""
-    @State private var expandedCategories: Set<S.Category> = []
+    @State private var expandedCategories: Set<SnapshotType.Category> = []
     @State private var validationMessage: String?
 
     var body: some View {
@@ -146,7 +145,10 @@ struct SnapshotCreateConfigurationView<Provider: SnapshotDataProvider>: View {
         .listStyle(.plain)
     }
 
-    private func categoryLabel(_ category: S.Category, fields: [SnapshotFieldConfig<S>]) -> some View {
+    private func categoryLabel(
+        _ category: SnapshotType.Category,
+        fields: [SnapshotFieldConfig<SnapshotType>]
+    ) -> some View {
         HStack {
             Button {
                 toggleCategory(fields: fields)
@@ -164,7 +166,7 @@ struct SnapshotCreateConfigurationView<Provider: SnapshotDataProvider>: View {
         }
     }
 
-    private func expansionBinding(for category: S.Category) -> Binding<Bool> {
+    private func expansionBinding(for category: SnapshotType.Category) -> Binding<Bool> {
         Binding(
             get: { expandedCategories.contains(category) },
             set: { isExpanded in
@@ -177,8 +179,8 @@ struct SnapshotCreateConfigurationView<Provider: SnapshotDataProvider>: View {
 // MARK: - Field grouping + selection
 
 extension SnapshotCreateConfigurationView {
-    private var filteredFieldsByCategory: [S.Category: [SnapshotFieldConfig<S>]] {
-        let all = S.availableFields()
+    private var filteredFieldsByCategory: [SnapshotType.Category: [SnapshotFieldConfig<SnapshotType>]] {
+        let all = SnapshotType.availableFields()
         let filtered = searchText.isEmpty ? all : all.filter {
             $0.displayName.localizedCaseInsensitiveContains(searchText)
                 || $0.dataDescription.localizedCaseInsensitiveContains(searchText)
@@ -187,11 +189,11 @@ extension SnapshotCreateConfigurationView {
         return Dictionary(grouping: filtered, by: \.category)
     }
 
-    private var categoriesInOrder: [S.Category] {
-        S.Category.allCases.filter { filteredFieldsByCategory[$0] != nil }
+    private var categoriesInOrder: [SnapshotType.Category] {
+        SnapshotType.Category.allCases.filter { filteredFieldsByCategory[$0] != nil }
     }
 
-    private var filteredFields: [SnapshotFieldConfig<S>] {
+    private var filteredFields: [SnapshotFieldConfig<SnapshotType>] {
         filteredFieldsByCategory.values.flatMap { $0 }
     }
 
@@ -205,11 +207,11 @@ extension SnapshotCreateConfigurationView {
         !filteredFields.contains(where: isSelected)
     }
 
-    private func isSelected(_ field: SnapshotFieldConfig<S>) -> Bool {
+    private func isSelected(_ field: SnapshotFieldConfig<SnapshotType>) -> Bool {
         selectedFields.contains { $0.keyPath == field.keyPath }
     }
 
-    private func setSelected(_ selected: Bool, field: SnapshotFieldConfig<S>) {
+    private func setSelected(_ selected: Bool, field: SnapshotFieldConfig<SnapshotType>) {
         if selected {
             if !isSelected(field) { selectedFields.append(field) }
         } else {
@@ -234,7 +236,7 @@ extension SnapshotCreateConfigurationView {
         }
     }
 
-    private func toggleCategory(fields: [SnapshotFieldConfig<S>]) {
+    private func toggleCategory(fields: [SnapshotFieldConfig<SnapshotType>]) {
         if isCategoryFullySelected(fields) {
             for field in fields {
                 selectedFields.removeAll { $0.keyPath == field.keyPath }
@@ -246,15 +248,15 @@ extension SnapshotCreateConfigurationView {
         }
     }
 
-    private func isCategoryFullySelected(_ fields: [SnapshotFieldConfig<S>]) -> Bool {
+    private func isCategoryFullySelected(_ fields: [SnapshotFieldConfig<SnapshotType>]) -> Bool {
         fields.allSatisfy(isSelected)
     }
 
-    private func selectedFieldsCount(_ fields: [SnapshotFieldConfig<S>]) -> Int {
+    private func selectedFieldsCount(_ fields: [SnapshotFieldConfig<SnapshotType>]) -> Int {
         fields.filter(isSelected).count
     }
 
-    private func categorySelectionState(fields: [SnapshotFieldConfig<S>]) -> String {
+    private func categorySelectionState(fields: [SnapshotFieldConfig<SnapshotType>]) -> String {
         let selected = selectedFieldsCount(fields)
         if selected == fields.count { return "checkmark.circle.fill" }
         if selected > 0 { return "minus.circle.fill" }

@@ -12,10 +12,9 @@ import SwiftUI
 /// Configure and launch a logging session from a saved configuration: name,
 /// optional fixed duration, stop-on-disconnect, and autosave cadence.
 struct SnapshotStartSessionView<Provider: SnapshotDataProvider>: View {
-    // swiftlint:disable:next type_name
-    typealias S = Provider.S
+    typealias SnapshotType = Provider.SnapshotType
 
-    let configuration: SnapshotLoggingConfiguration<S>
+    let configuration: SnapshotLoggingConfiguration<SnapshotType>
 
     @Environment(SnapshotLoggingManager<Provider>.self) private var loggingManager
     @Environment(\.dismiss) private var dismiss
@@ -32,7 +31,7 @@ struct SnapshotStartSessionView<Provider: SnapshotDataProvider>: View {
     @State private var errorMessage: String?
     @State private var isStarting = false
 
-    init(configuration: SnapshotLoggingConfiguration<S>) {
+    init(configuration: SnapshotLoggingConfiguration<SnapshotType>) {
         self.configuration = configuration
         _captureMode = State(initialValue: configuration.captureMode)
     }
@@ -138,10 +137,10 @@ struct SnapshotStartSessionView<Provider: SnapshotDataProvider>: View {
 
     private var startFooterText: String {
         if captureMode == .notifications {
-            return "The session subscribes to \(S.displayName) notifications; the device pushes data."
+            return "The session subscribes to \(SnapshotType.displayName) notifications; the device pushes data."
         }
         let interval = String(format: "%.1f", configuration.pollingInterval)
-        return "The session reads the \(S.displayName) every \(interval) s."
+        return "The session reads the \(SnapshotType.displayName) every \(interval) s."
     }
 
     private var startDisabled: Bool {
@@ -155,7 +154,7 @@ struct SnapshotStartSessionView<Provider: SnapshotDataProvider>: View {
     private func seedDefaultName() {
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyy-MM-dd HH-mm-ss"
-        sessionName = "\(S.displayName) \(formatter.string(from: Date()))"
+        sessionName = "\(SnapshotType.displayName) \(formatter.string(from: Date()))"
     }
 
     private func startSession() {

@@ -48,8 +48,15 @@ struct SnapshotLoggingView: View {
         _manager = State(initialValue: SnapshotLoggingManager(
             provider: DeviceSnapshotDataProvider(stream: peer.snapshotStream),
             metadataProvider: {
-                let serial = await (try? system.readSerialNumber()) ?? 0
-                let version = try? await system.readFirmwareVersion()
+                // Bound the identity reads so a slow/absent System characteristic
+                // can't stall session start — and therefore the capture stream.
+                // Falls back to Unknown; capture proceeds regardless.
+                let serial = await (try? withThrowingTimeout(.seconds(3)) {
+                    try await system.readSerialNumber()
+                }) ?? 0
+                let version = try? await withThrowingTimeout(.seconds(3)) {
+                    try await system.readFirmwareVersion()
+                }
                 return SnapshotSessionMetadata(
                     serialNumber: serial,
                     firmwareVersion: version.map { "\($0)" } ?? "Unknown"
@@ -78,15 +85,14 @@ struct SnapshotLoggingView: View {
 /// reading its ``SnapshotLoggingManager`` from the environment so it works for any
 /// snapshot type.
 struct SnapshotLoggingContent<Provider: SnapshotDataProvider>: View {
-    // swiftlint:disable:next type_name
-    typealias S = Provider.S
+    typealias SnapshotType = Provider.SnapshotType
 
     @Environment(SnapshotLoggingManager<Provider>.self) private var loggingManager
 
     @State private var showingCreateConfiguration = false
     @State private var showingDeleteAlert = false
     @State private var showingTimingExplanation = false
-    @State private var configurationToDelete: SnapshotLoggingConfiguration<S>?
+    @State private var configurationToDelete: SnapshotLoggingConfiguration<SnapshotType>?
     @State private var sessionToDelete: SnapshotLoggingSession?
 
     @State private var configurationsSortKey: SortKey = .title
@@ -102,7 +108,7 @@ struct SnapshotLoggingContent<Provider: SnapshotDataProvider>: View {
             activeSessionsSection
             completedSessionsSection
         }
-        .navigationTitle(S.captureNavigationTitle)
+        .navigationTitle(SnapshotType.captureNavigationTitle)
         .navigationBarTitleDisplayMode(.large)
         .sheet(isPresented: $showingCreateConfiguration) {
             SnapshotCreateConfigurationView<Provider>()
@@ -134,28 +140,23 @@ struct SnapshotLoggingContent<Provider: SnapshotDataProvider>: View {
 
     // MARK: Sorting
 
-    private func sortingButtons(
-        currentSortKey: SortKey,
-        currentSortDirection: SortDirection,
-        onSortKeyChange: @escaping (SortKey) -> Void,
-        onSortDirectionChange: @escaping (SortDirection) -> Void
-    ) -> some View {
+    private func sortingButtons(key: Binding<SortKey>, direction: Binding<SortDirection>) -> some View {
         HStack(spacing: 12) {
             ForEach(SortKey.allCases, id: \.self) { sortKey in
+                let isCurrent = key.wrappedValue == sortKey
                 Button {
-                    if currentSortKey == sortKey {
-                        onSortDirectionChange(currentSortDirection == .ascending ? .descending : .ascending)
+                    if isCurrent {
+                        direction.wrappedValue = direction.wrappedValue == .ascending ? .descending : .ascending
                     } else {
-                        onSortKeyChange(sortKey)
-                        onSortDirectionChange(.ascending)
+                        key.wrappedValue = sortKey
+                        direction.wrappedValue = .ascending
                     }
                 } label: {
                     HStack(spacing: 4) {
-                        Text(sortKey.rawValue)
-                            .fontWeight(currentSortKey == sortKey ? .bold : .regular)
+                        Text(sortKey.rawValue).fontWeight(isCurrent ? .bold : .regular)
                         Group {
-                            if currentSortKey == sortKey {
-                                Image(systemName: currentSortDirection.chevronIcon)
+                            if isCurrent {
+                                Image(systemName: direction.wrappedValue.chevronIcon)
                             } else {
                                 Image(systemName: "circle")
                             }
@@ -164,7 +165,7 @@ struct SnapshotLoggingContent<Provider: SnapshotDataProvider>: View {
                     }
                 }
                 .font(.caption)
-                .foregroundStyle(currentSortKey == sortKey ? Color.accentColor : .secondary)
+                .foregroundStyle(isCurrent ? Color.accentColor : .secondary)
                 .buttonStyle(.bordered)
             }
         }
@@ -188,7 +189,7 @@ struct SnapshotLoggingContent<Provider: SnapshotDataProvider>: View {
         }
     }
 
-    private var sortedConfigurations: [SnapshotLoggingConfiguration<S>] {
+    private var sortedConfigurations: [SnapshotLoggingConfiguration<SnapshotType>] {
         sorted(
             loggingManager.configurations,
             key: configurationsSortKey,
@@ -224,9 +225,9 @@ struct SnapshotLoggingContent<Provider: SnapshotDataProvider>: View {
         Section {
             if loggingManager.configurations.isEmpty {
                 emptyState(
-                    icon: S.emptyStateIconName,
-                    title: "No \(S.shortName) Configurations",
-                    message: S.noConfigurationsText
+                    icon: SnapshotType.emptyStateIconName,
+                    title: "No \(SnapshotType.shortName) Configurations",
+                    message: SnapshotType.noConfigurationsText
                 )
             } else {
                 ForEach(sortedConfigurations) { configuration in
@@ -247,13 +248,11 @@ struct SnapshotLoggingContent<Provider: SnapshotDataProvider>: View {
             sectionHeader(
                 "Configurations",
                 isEmpty: loggingManager.configurations.isEmpty,
-                key: configurationsSortKey,
-                direction: configurationsSortDirection,
-                onKey: { configurationsSortKey = $0 },
-                onDirection: { configurationsSortDirection = $0 }
+                key: $configurationsSortKey,
+                direction: $configurationsSortDirection
             )
         } footer: {
-            Text(S.createConfigurationPrompt)
+            Text(SnapshotType.createConfigurationPrompt)
         }
     }
 
@@ -274,14 +273,12 @@ struct SnapshotLoggingContent<Provider: SnapshotDataProvider>: View {
             sectionHeader(
                 "Active Sessions",
                 isEmpty: loggingManager.activeSessions.isEmpty,
-                key: activeSessionsSortKey,
-                direction: activeSessionsSortDirection,
-                onKey: { activeSessionsSortKey = $0 },
-                onDirection: { activeSessionsSortDirection = $0 }
+                key: $activeSessionsSortKey,
+                direction: $activeSessionsSortDirection
             )
         } footer: {
             VStack(alignment: .leading, spacing: 8) {
-                Text("Monitor and control running \(S.shortName.lowercased()) snapshot logging sessions.")
+                Text("Monitor and control running \(SnapshotType.shortName.lowercased()) snapshot logging sessions.")
                 Button { showingTimingExplanation = true } label: {
                     Label("Timing Metrics Explained", systemImage: "info.circle").font(.caption)
                 }
@@ -295,7 +292,7 @@ struct SnapshotLoggingContent<Provider: SnapshotDataProvider>: View {
                 emptyState(
                     icon: "checkmark.circle",
                     title: "No Completed Sessions",
-                    message: S.noCompletedSessionsText
+                    message: SnapshotType.noCompletedSessionsText
                 )
             } else {
                 ForEach(sortedCompletedSessions) { session in
@@ -312,10 +309,8 @@ struct SnapshotLoggingContent<Provider: SnapshotDataProvider>: View {
             sectionHeader(
                 "Completed Sessions",
                 isEmpty: loggingManager.completedSessions.isEmpty,
-                key: completedSessionsSortKey,
-                direction: completedSessionsSortDirection,
-                onKey: { completedSessionsSortKey = $0 },
-                onDirection: { completedSessionsSortDirection = $0 }
+                key: $completedSessionsSortKey,
+                direction: $completedSessionsSortDirection
             )
         } footer: {
             Text("Export completed sessions as JSON, CSV, or binary files for analysis.")
@@ -327,21 +322,14 @@ struct SnapshotLoggingContent<Provider: SnapshotDataProvider>: View {
     private func sectionHeader(
         _ title: String,
         isEmpty: Bool,
-        key: SortKey,
-        direction: SortDirection,
-        onKey: @escaping (SortKey) -> Void,
-        onDirection: @escaping (SortDirection) -> Void
+        key: Binding<SortKey>,
+        direction: Binding<SortDirection>
     ) -> some View {
         HStack(alignment: .firstTextBaseline) {
             Text(title)
             Spacer()
             if !isEmpty {
-                sortingButtons(
-                    currentSortKey: key,
-                    currentSortDirection: direction,
-                    onSortKeyChange: onKey,
-                    onSortDirectionChange: onDirection
-                )
+                sortingButtons(key: key, direction: direction)
             }
         }
     }

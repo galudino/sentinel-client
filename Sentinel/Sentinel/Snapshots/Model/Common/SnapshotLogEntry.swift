@@ -18,7 +18,7 @@ nonisolated struct SnapshotLogEntry: Codable, Identifiable, Hashable {
     let timestamp: Date
     let fieldValues: [SnapshotFieldValue]
 
-    /// Device-side capture time (from the snapshot's `unixTime_ms`).
+    /// Device-side capture time (from the snapshot's `unixTimeMs`).
     let deviceUnixTimeMs: UInt64?
 
     // MARK: Polling-mode timing diagnostics

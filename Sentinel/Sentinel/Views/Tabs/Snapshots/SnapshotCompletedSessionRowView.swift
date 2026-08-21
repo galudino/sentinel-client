@@ -13,8 +13,7 @@ import SwiftUI
 /// from the loaded entries or the persisted aggregates), and actions to open the
 /// chart, rename, or export.
 struct SnapshotCompletedSessionRowView<Provider: SnapshotDataProvider>: View {
-    // swiftlint:disable:next type_name
-    typealias S = Provider.S
+    typealias SnapshotType = Provider.SnapshotType
 
     let session: SnapshotLoggingSession
     @Environment(SnapshotLoggingManager<Provider>.self) private var loggingManager
@@ -74,7 +73,7 @@ struct SnapshotCompletedSessionRowView<Provider: SnapshotDataProvider>: View {
             Button { showingRenameSheet = true } label: { Image(systemName: "pencil") }
                 .buttonStyle(.bordered)
 
-            NavigationLink(value: S.chartRoute(for: session)) {
+            NavigationLink(value: SnapshotType.chartRoute(for: session)) {
                 Image(systemName: "chart.line.uptrend.xyaxis")
             }
             .buttonStyle(.bordered)

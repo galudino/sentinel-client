@@ -57,7 +57,7 @@ nonisolated extension SnapshotTimingFieldConfig {
         displayName: "Device Timestamp",
         shortName: "Device Timestamp",
         description: "The device's own clock time when it captured the snapshot.",
-        calculation: "Directly from the snapshot's unixTime_ms field",
+        calculation: "Directly from the snapshot's unixTimeMs field",
         unit: "",
         category: .timestamps,
         applicableModes: [.polling, .notifications],

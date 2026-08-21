@@ -218,8 +218,12 @@ struct SnapshotSessionChartView: View {
             .cornerRadius(12)
         }
     }
+}
 
-    private var emptyChartPlaceholder: some View {
+// MARK: - Rendering
+
+private extension SnapshotSessionChartView {
+    var emptyChartPlaceholder: some View {
         VStack(spacing: 12) {
             Image(systemName: "chart.line.uptrend.xyaxis").font(.largeTitle).foregroundStyle(.secondary)
             Text("Select at least one field to display the chart")
@@ -234,7 +238,7 @@ struct SnapshotSessionChartView: View {
         .cornerRadius(12)
     }
 
-    private var dualAxisChart: some View {
+    var dualAxisChart: some View {
         HStack(spacing: 0) {
             if let field = leftAxisField {
                 Text(field.unit).font(.caption2).foregroundStyle(.blue)
@@ -248,7 +252,7 @@ struct SnapshotSessionChartView: View {
         }
     }
 
-    private var chartContent: some View {
+    var chartContent: some View {
         let leftRange = ChartMath.paddedRange(leftDisplay)
         let rightRange = ChartMath.paddedRange(rightDisplay)
 
@@ -322,7 +326,7 @@ struct SnapshotSessionChartView: View {
         .drawingGroup()
     }
 
-    private var legendSection: some View {
+    var legendSection: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("Legend").font(.subheadline).fontWeight(.medium)
             if let field = leftAxisField { legendRow(color: .blue, text: "\(field.displayName) (\(field.unit))") }
@@ -345,14 +349,14 @@ struct SnapshotSessionChartView: View {
         .cornerRadius(12)
     }
 
-    private func legendRow(color: Color, text: String) -> some View {
+    func legendRow(color: Color, text: String) -> some View {
         HStack {
             RoundedRectangle(cornerRadius: 2).fill(color).frame(width: 20, height: 3)
             Text(text).font(.caption).foregroundStyle(.secondary)
         }
     }
 
-    private var loadingOverlay: some View {
+    var loadingOverlay: some View {
         ZStack {
             Color.black.opacity(0.3).ignoresSafeArea()
             VStack(spacing: 16) {

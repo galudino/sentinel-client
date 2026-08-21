@@ -13,7 +13,7 @@ import Foundation
 /// ``SnapshotStreamService`` for BLE I/O and extracts derived engineering-unit
 /// values by keyPath (matching ``SnapshotFieldConfig`` field catalog).
 struct DeviceSnapshotDataProvider: SnapshotDataProvider {
-    typealias S = DeviceSnapshot
+    typealias SnapshotType = DeviceSnapshot
 
     /// The live snapshot stream (read on demand for polling; notifications for
     /// streaming). Supplied by the connected peer's `snapshotStream` client.
@@ -45,31 +45,60 @@ struct DeviceSnapshotDataProvider: SnapshotDataProvider {
 
     // MARK: Field extraction
 
-    // swiftlint:disable:next cyclomatic_complexity
+    /// Extract a field value, trying each subsystem category in turn. Split by
+    /// category so each switch stays small (and organized like the field catalog).
     func extractValue(from snapshot: DeviceSnapshot, keyPath: String) -> SnapshotValue {
+        environmentValue(snapshot, keyPath)
+            ?? rtcValue(snapshot, keyPath)
+            ?? storageValue(snapshot, keyPath)
+            ?? bluetoothValue(snapshot, keyPath)
+            ?? healthValue(snapshot, keyPath)
+            ?? .error("Unknown keyPath: \(keyPath)")
+    }
+
+    private func environmentValue(_ snapshot: DeviceSnapshot, _ keyPath: String) -> SnapshotValue? {
         switch keyPath {
-        // Environment
         case "temperatureCelsius": .float32(Float32(snapshot.temperatureCelsius))
         case "humidityPercent": .float32(Float32(snapshot.humidityPercent))
         case "pressureHectopascals": .float32(Float32(snapshot.pressureHectopascals))
-        // Real-Time Clock
+        default: nil
+        }
+    }
+
+    private func rtcValue(_ snapshot: DeviceSnapshot, _ keyPath: String) -> SnapshotValue? {
+        switch keyPath {
         case "rtcTemperatureCelsius": .float32(Float32(snapshot.rtcTemperatureCelsius))
         case "rtcAlarm1Fired": .bool(snapshot.rtcAlarmFlags & 0x01 != 0)
         case "rtcAlarm2Fired": .bool(snapshot.rtcAlarmFlags & 0x02 != 0)
         case "rtcOscillatorStopped": .bool(snapshot.rtcAlarmFlags & 0x80 != 0)
-        // Storage
+        default: nil
+        }
+    }
+
+    private func storageValue(_ snapshot: DeviceSnapshot, _ keyPath: String) -> SnapshotValue? {
+        switch keyPath {
         case "eventLogRecordCount": .uint32(snapshot.eventLogRecordCount)
         case "snapshotLogRecordCount": .uint32(snapshot.snapshotLogRecordCount)
-        // Bluetooth
+        default: nil
+        }
+    }
+
+    private func bluetoothValue(_ snapshot: DeviceSnapshot, _ keyPath: String) -> SnapshotValue? {
+        switch keyPath {
         case "bleConnected": .bool(snapshot.bleConnected)
         case "bleTxPowerDbm": .uint8(snapshot.bleTxPowerDbm)
         case "blePeerRssiDbm": .float32(Float32(snapshot.blePeerRssiDbm))
-        // Health
+        default: nil
+        }
+    }
+
+    private func healthValue(_ snapshot: DeviceSnapshot, _ keyPath: String) -> SnapshotValue? {
+        switch keyPath {
         case "cpuTemperatureCelsius": .float32(Float32(snapshot.cpuTemperatureCelsius))
         case "uptimeSeconds": .uint32(snapshot.uptimeSeconds)
         case "postPassed": .bool(snapshot.postPassed)
         case "postLastStatus": .uint8(snapshot.postLastStatus)
-        default: .error("Unknown keyPath: \(keyPath)")
+        default: nil
         }
     }
 }

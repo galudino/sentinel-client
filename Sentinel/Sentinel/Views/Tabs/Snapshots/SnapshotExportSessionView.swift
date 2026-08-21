@@ -32,8 +32,7 @@ nonisolated enum PreviewEntryCount: Int, CaseIterable, Identifiable {
 /// ``SnapshotLoggingManager/exportSession(_:format:selectedFieldKeyPaths:selectedTimingFieldIds:)``
 /// (the preview on a truncated copy), so what you see is exactly what you get.
 struct SnapshotExportSessionView<Provider: SnapshotDataProvider>: View {
-    // swiftlint:disable:next type_name
-    typealias S = Provider.S
+    typealias SnapshotType = Provider.SnapshotType
 
     let session: SnapshotLoggingSession
 
@@ -83,7 +82,7 @@ struct SnapshotExportSessionView<Provider: SnapshotDataProvider>: View {
                 FullExportPreviewView(text: fullPreviewText, title: "\(exportFileName).\(selectedFormat.fileExtension)")
             }
             .sheet(isPresented: $showingFieldSelection) {
-                SnapshotSelectExportFieldsView<S>(
+                SnapshotSelectExportFieldsView<SnapshotType>(
                     availableFieldKeyPaths: availableFieldKeyPaths,
                     selectedFieldKeyPaths: $selectedExportFieldKeyPaths
                 )

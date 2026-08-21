@@ -19,8 +19,8 @@ import Foundation
 /// ``SnapshotStreamService`` — so the manager never touches an `AsyncBluetooth`
 /// type directly, mirroring how the rest of the client is layered.
 protocol SnapshotDataProvider {
-    /// The snapshot data type, e.g. ``DeviceSnapshot``.
-    associatedtype S: Snapshot
+    /// The concrete snapshot type this provider serves, e.g. ``DeviceSnapshot``.
+    associatedtype SnapshotType: Snapshot
 
     // MARK: Identification / storage keys
 
@@ -33,16 +33,16 @@ protocol SnapshotDataProvider {
     // MARK: BLE operations
 
     /// Read + decode the most recent snapshot on demand (polling mode).
-    func readSnapshot() async throws -> S
+    func readSnapshot() async throws -> SnapshotType
     /// Enable/disable the device's snapshot notification stream (notification mode).
     func setStreaming(_ enabled: Bool) async throws
     /// The live snapshot stream the device pushes while streaming is enabled.
-    func snapshotStream() -> AsyncStream<S>
+    func snapshotStream() -> AsyncStream<SnapshotType>
 
     // MARK: Field extraction
 
     /// Extract a single field value from a snapshot by keyPath.
-    func extractValue(from snapshot: S, keyPath: String) -> SnapshotValue
+    func extractValue(from snapshot: SnapshotType, keyPath: String) -> SnapshotValue
 
     // MARK: Export formatting
 
@@ -65,8 +65,8 @@ extension SnapshotDataProvider {
 
     /// Extract all configured field values from a snapshot.
     func extractFieldValues(
-        from snapshot: S,
-        for fields: [SnapshotFieldConfig<S>]
+        from snapshot: SnapshotType,
+        for fields: [SnapshotFieldConfig<SnapshotType>]
     ) -> [SnapshotFieldValue] {
         fields.map { field in
             SnapshotFieldValue(

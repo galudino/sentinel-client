@@ -177,10 +177,7 @@ struct SnapshotSelectTimingFieldsView: View {
     private func unselectAll() { selectedFieldIds.removeAll() }
 
     private func invertSelection() {
-        for field in availableFields {
-            if selectedFieldIds.contains(field.id) { selectedFieldIds.remove(field.id) }
-            else { selectedFieldIds.insert(field.id) }
-        }
+        selectedFieldIds.formSymmetricDifference(availableFields.map(\.id))
     }
 
     private func setDefaults() {

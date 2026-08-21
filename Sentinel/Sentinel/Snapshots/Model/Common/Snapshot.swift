@@ -24,7 +24,7 @@ protocol Snapshot: PeripheralDataConvertible, Sendable {
     associatedtype Category: SnapshotCategory
 
     /// Device-side capture time, in Unix milliseconds.
-    var unixTime_ms: UInt64 { get } // swiftlint:disable:this identifier_name
+    var unixTimeMs: UInt64 { get }
 
     // MARK: Display metadata
 

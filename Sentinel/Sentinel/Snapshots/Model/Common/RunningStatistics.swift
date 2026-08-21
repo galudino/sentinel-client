@@ -18,8 +18,8 @@ nonisolated struct RunningStatistics: Hashable {
     private(set) var min: Double?
     private(set) var max: Double?
 
-    // swiftlint:disable:next empty_count
-    var isEmpty: Bool { count == 0 }
+    /// No values added yet (`min` is set on the first `add`).
+    var isEmpty: Bool { min == nil }
 
     var avg: Double { !isEmpty ? sum / Double(count) : 0 }
 

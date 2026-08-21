@@ -17,7 +17,6 @@ import SwiftUI
 /// series is extracted once, and on every zoom/pan the **visible window** is
 /// sliced and re-decimated (``ChartDecimator``) to a bounded point count —
 /// debounced so a fast pinch stays at ~60fps. The plot is a `.drawingGroup()`.
-// swiftlint:disable:next type_body_length
 struct SnapshotFullScreenChartView: View {
     let session: SnapshotLoggingSession
     let leftAxisFieldKeyPath: String?
@@ -235,55 +234,6 @@ struct SnapshotFullScreenChartView: View {
         .drawingGroup()
     }
 
-    private var zoomIndicator: some View {
-        HStack {
-            Text("Zoom \(String(format: "%.1f", xZoomScale))×").font(.caption2).foregroundStyle(.secondary)
-            Text("•").foregroundStyle(.secondary)
-            Text("Samples \(visibleXRange.lowerBound)–\(visibleXRange.upperBound)")
-                .font(.caption2).foregroundStyle(.secondary)
-        }
-        .padding(.top, 4)
-    }
-
-    private var emptyChartPlaceholder: some View {
-        VStack(spacing: 12) {
-            Image(systemName: "chart.line.uptrend.xyaxis").font(.largeTitle).foregroundStyle(.secondary)
-            Text("No fields selected to display").font(.subheadline).foregroundStyle(.secondary)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
-
-    // MARK: Legend
-
-    private var legendSection: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 8) {
-                ForEach(legendItems) { item in legendChip(item: item) }
-            }
-            .padding(.horizontal, 4)
-        }
-        .padding(.top, 8)
-    }
-
-    private func legendChip(item: LegendItem) -> some View {
-        HStack(spacing: 6) {
-            if item.isDashed {
-                HStack(spacing: 2) {
-                    ForEach(0 ..< 3, id: \.self) { _ in
-                        RoundedRectangle(cornerRadius: 1).fill(item.color).frame(width: 4, height: 3)
-                    }
-                }
-                .frame(width: 16)
-            } else {
-                RoundedRectangle(cornerRadius: 2).fill(item.color).frame(width: 16, height: 3)
-            }
-            Text(item.name).font(.caption2).foregroundStyle(.secondary).lineLimit(1)
-        }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 6)
-        .background(RoundedRectangle(cornerRadius: 8).fill(Color(.systemGray6)))
-    }
-
     // MARK: Metadata popup
 
     private func metadataPopupView(entry: SnapshotLogEntry, geometry: GeometryProxy) -> some View {
@@ -394,5 +344,58 @@ extension SnapshotFullScreenChartView {
 
     private func legendName(_ field: ChartableField) -> String {
         field.unit.isEmpty ? field.displayName : "\(field.displayName) (\(field.unit))"
+    }
+}
+
+// MARK: - Rendering (overlays + legend)
+
+private extension SnapshotFullScreenChartView {
+    var zoomIndicator: some View {
+        HStack {
+            Text("Zoom \(String(format: "%.1f", xZoomScale))×").font(.caption2).foregroundStyle(.secondary)
+            Text("•").foregroundStyle(.secondary)
+            Text("Samples \(visibleXRange.lowerBound)–\(visibleXRange.upperBound)")
+                .font(.caption2).foregroundStyle(.secondary)
+        }
+        .padding(.top, 4)
+    }
+
+    var emptyChartPlaceholder: some View {
+        VStack(spacing: 12) {
+            Image(systemName: "chart.line.uptrend.xyaxis").font(.largeTitle).foregroundStyle(.secondary)
+            Text("No fields selected to display").font(.subheadline).foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    // MARK: Legend
+
+    var legendSection: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                ForEach(legendItems) { item in legendChip(item: item) }
+            }
+            .padding(.horizontal, 4)
+        }
+        .padding(.top, 8)
+    }
+
+    func legendChip(item: LegendItem) -> some View {
+        HStack(spacing: 6) {
+            if item.isDashed {
+                HStack(spacing: 2) {
+                    ForEach(0 ..< 3, id: \.self) { _ in
+                        RoundedRectangle(cornerRadius: 1).fill(item.color).frame(width: 4, height: 3)
+                    }
+                }
+                .frame(width: 16)
+            } else {
+                RoundedRectangle(cornerRadius: 2).fill(item.color).frame(width: 16, height: 3)
+            }
+            Text(item.name).font(.caption2).foregroundStyle(.secondary).lineLimit(1)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(RoundedRectangle(cornerRadius: 8).fill(Color(.systemGray6)))
     }
 }

@@ -5,6 +5,11 @@
 //  Created by Gemuele Aludino on 8/21/26.
 //
 
+// A cohesive, tightly-coupled capture engine: every section (capture tasks,
+// autosave, deadlines, file persistence) mutates the same private task/handle
+// state, so splitting it across files would only leak that state module-wide
+// rather than clarify. The two size rules are disabled deliberately for this one
+// type; the export logic already lives in its own `+Export` extension.
 // swiftlint:disable type_body_length file_length
 
 import Foundation
@@ -28,8 +33,8 @@ import Observation
 @Observable
 @MainActor
 final class SnapshotLoggingManager<Provider: SnapshotDataProvider> {
-    typealias SnapshotType = Provider.S
-    typealias CategoryType = Provider.S.Category
+    typealias SnapshotType = Provider.SnapshotType
+    typealias CategoryType = Provider.SnapshotType.Category
 
     // MARK: Published state
 
@@ -294,6 +299,42 @@ final class SnapshotLoggingManager<Provider: SnapshotDataProvider> {
 
     // MARK: Polling capture
 
+    /// Whether the active session with this id has hit its duration bound.
+    private func activeSessionShouldStop(_ sessionId: UUID) -> Bool {
+        guard let idx = activeSessions.firstIndex(where: { $0.id == sessionId }) else { return false }
+        return activeSessions[idx].shouldStop()
+    }
+
+    /// One BLE read plus the timestamps around it.
+    private struct PollingRead {
+        let actualStart: Date
+        let actualFinishRead: Date
+        let deviceUnixTimeMs: UInt64?
+        let fieldValues: [SnapshotFieldValue]
+    }
+
+    /// Perform a single polling read, decoding the configured fields (or an error
+    /// field on failure) and stamping the read start/finish times.
+    private func performPollingRead(fields: [SnapshotFieldConfig<SnapshotType>]) async -> PollingRead {
+        let actualStart = Date()
+        var fieldValues: [SnapshotFieldValue] = []
+        var deviceUnixTimeMs: UInt64?
+        do {
+            let snapshot = try await provider.readSnapshot()
+            deviceUnixTimeMs = snapshot.unixTimeMs
+            fieldValues = provider.extractFieldValues(from: snapshot, for: fields)
+        } catch {
+            fieldValues = [SnapshotFieldValue(
+                displayName: "Error", keyPath: "error",
+                value: .error(error.localizedDescription), unit: "", dataType: .string
+            )]
+        }
+        return PollingRead(
+            actualStart: actualStart, actualFinishRead: Date(),
+            deviceUnixTimeMs: deviceUnixTimeMs, fieldValues: fieldValues
+        )
+    }
+
     private func startPolling(for session: SnapshotLoggingSession, with fields: [SnapshotFieldConfig<SnapshotType>]) {
         let sessionId = session.id
         let intervalNanos = UInt64(session.pollingInterval * 1_000_000_000)
@@ -303,59 +344,32 @@ final class SnapshotLoggingManager<Provider: SnapshotDataProvider> {
         pollingTasks[sessionId] = Task { @MainActor in
             while !Task.isCancelled {
                 deadlineNs &+= intervalNanos
-                let scheduledTickDate = Date()
-
-                if let idx = activeSessions.firstIndex(where: { $0.id == sessionId }),
-                   activeSessions[idx].shouldStop()
-                {
+                let scheduledTick = Date()
+                if activeSessionShouldStop(sessionId) {
                     stopLoggingSession(sessionId)
                     break
                 }
 
-                let actualStartDate = Date()
-                var fieldValues: [SnapshotFieldValue] = []
-                var readDurationSeconds: Double?
-                var actualFinishReadDate: Date?
-                var deviceUnixTimeMs: UInt64?
+                let read = await performPollingRead(fields: fields)
 
-                do {
-                    let snapshot = try await provider.readSnapshot()
-                    actualFinishReadDate = Date()
-                    readDurationSeconds = actualFinishReadDate?.timeIntervalSince(actualStartDate)
-                    deviceUnixTimeMs = snapshot.unixTime_ms
-                    fieldValues = provider.extractFieldValues(from: snapshot, for: fields)
-                } catch {
-                    actualFinishReadDate = Date()
-                    readDurationSeconds = actualFinishReadDate?.timeIntervalSince(actualStartDate)
-                    fieldValues = [SnapshotFieldValue(
-                        displayName: "Error",
-                        keyPath: "error",
-                        value: .error(error.localizedDescription),
-                        unit: "",
-                        dataType: .string
-                    )]
-                }
-
-                let nowSeconds = Date().timeIntervalSince(wallStart)
-                let nowNs = nowSeconds > 0 ? UInt64(nowSeconds * 1_000_000_000) : 0
+                // Hold the interval before closing the cycle.
+                let nowNs = UInt64(max(0, Date().timeIntervalSince(wallStart)) * 1_000_000_000)
                 if nowNs < deadlineNs {
-                    let remainingNs = deadlineNs &- nowNs
-                    if remainingNs > 0 { try? await Task.sleep(nanoseconds: remainingNs) }
+                    try? await Task.sleep(nanoseconds: deadlineNs &- nowNs)
                 }
 
-                let finishCycleDate = Date()
+                let finishCycle = Date()
                 let entry = SnapshotLogEntry(
-                    fieldValues: fieldValues,
-                    deviceUnixTimeMs: deviceUnixTimeMs,
-                    scheduledTick: scheduledTickDate,
-                    actualStart: actualStartDate,
-                    actualFinishRead: actualFinishReadDate,
-                    finishCycle: finishCycleDate,
-                    latencySeconds: actualStartDate.timeIntervalSince(scheduledTickDate),
-                    readDurationSeconds: readDurationSeconds,
-                    cycleDurationSeconds: finishCycleDate.timeIntervalSince(scheduledTickDate)
+                    fieldValues: read.fieldValues,
+                    deviceUnixTimeMs: read.deviceUnixTimeMs,
+                    scheduledTick: scheduledTick,
+                    actualStart: read.actualStart,
+                    actualFinishRead: read.actualFinishRead,
+                    finishCycle: finishCycle,
+                    latencySeconds: read.actualStart.timeIntervalSince(scheduledTick),
+                    readDurationSeconds: read.actualFinishRead.timeIntervalSince(read.actualStart),
+                    cycleDurationSeconds: finishCycle.timeIntervalSince(scheduledTick)
                 )
-
                 if let idx = activeSessions.firstIndex(where: { $0.id == sessionId }) {
                     addEntryToActiveSession(entry, at: idx, captureMode: .polling)
                 }
@@ -404,7 +418,7 @@ final class SnapshotLoggingManager<Provider: SnapshotDataProvider> {
 
         let entry = SnapshotLogEntry(
             fieldValues: provider.extractFieldValues(from: snapshot, for: fields),
-            deviceUnixTimeMs: snapshot.unixTime_ms,
+            deviceUnixTimeMs: snapshot.unixTimeMs,
             actualStart: now,
             interNotificationInterval: interNotificationInterval
         )

@@ -91,8 +91,9 @@ struct TimeAndDateView: View {
 
     private var rtcTemperatureText: String {
         guard let rtcTemperatureCentiC else { return "—" }
+        // DS3231 on-die temp is ±3 °C / 0.25 °C steps — 1 dp avoids false precision.
         return (Double(rtcTemperatureCentiC) / 100.0)
-            .formatted(.number.precision(.fractionLength(2))) + " °C"
+            .formatted(.number.precision(.fractionLength(1))) + " °C"
     }
 
     private var osfText: String { flag(bit: 7, setLabel: "Stopped", clearLabel: "Running") }

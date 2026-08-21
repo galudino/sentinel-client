@@ -78,6 +78,7 @@ struct SnapshotLoggingView: View {
 /// reading its ``SnapshotLoggingManager`` from the environment so it works for any
 /// snapshot type.
 struct SnapshotLoggingContent<Provider: SnapshotDataProvider>: View {
+    // swiftlint:disable:next type_name
     typealias S = Provider.S
 
     @Environment(SnapshotLoggingManager<Provider>.self) private var loggingManager

@@ -13,6 +13,7 @@ import SwiftUI
 /// date, and a Start Session action. The Snapshots tab only exists while
 /// connected, so starting a session needs no connection gate.
 struct SnapshotConfigurationRowView<Provider: SnapshotDataProvider>: View {
+    // swiftlint:disable:next type_name
     typealias S = Provider.S
 
     let configuration: SnapshotLoggingConfiguration<S>

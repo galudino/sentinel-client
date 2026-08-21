@@ -8,18 +8,16 @@
 import SwiftUI
 
 /// The **Settings** tab — strictly *app-side* preferences + paired-device
-/// management. Device-side concerns (firmware, GATT, device controls) live in the
-/// Device tab (#18), never here.
+/// management. Device-side concerns (firmware, GATT, device controls, and the
+/// live connection's identity/disconnect) live in the Device tab (#18), never
+/// here. This keeps Settings **peer-independent**, so it can also be reached
+/// without a connection (main-menu access, tracked separately).
 ///
 /// Reads the app-wide `@Observable` stores: ``AppPreferences`` + ``PairedPeerStore``
-/// (#23). "Currently connected" shows the peripheral **identifier** — iOS
-/// CoreBluetooth does not expose the BD_ADDR (the wire MAC), only the stable
-/// per-install `CBPeripheral.identifier`.
+/// (#23).
 struct SettingsView: View {
     @Environment(AppPreferences.self) private var preferences
     @Environment(PairedPeerStore.self) private var pairedStore
-    @Environment(AppRouter.self) private var router
-    @Environment(ConnectedPeer.self) private var peer
 
     @State private var confirmingForgetAll = false
 
@@ -29,7 +27,6 @@ struct SettingsView: View {
         NavigationStack {
             Form {
                 pairedDevicesSection
-                connectionSection
 
                 Section("Appearance") {
                     Picker("Theme", selection: $preferences.theme) {
@@ -95,22 +92,6 @@ struct SettingsView: View {
         }
     }
 
-    // MARK: Current connection
-
-    private var connectionSection: some View {
-        Section("Connected Device") {
-            LabeledContent("Name", value: peer.name ?? "Sentinel")
-            LabeledContent("Identifier") {
-                Text(peer.id.uuidString).font(.caption.monospaced()).foregroundStyle(.secondary)
-            }
-            Button(role: .destructive) {
-                router.disconnect()
-            } label: {
-                Label("Disconnect", systemImage: "antenna.radiowaves.left.and.right.slash")
-            }
-        }
-    }
-
     // MARK: About
 
     private var aboutSection: some View {
@@ -136,6 +117,4 @@ struct SettingsView: View {
     SettingsView()
         .environment(AppPreferences())
         .environment(PairedPeerStore.preview())
-        .environment(AppRouter(bluetoothManager: BluetoothManager()))
-        .environment(ConnectedPeer(name: "Sentinel"))
 }

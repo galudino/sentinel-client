@@ -36,6 +36,12 @@ struct DeviceInfoView: View {
                 } label: {
                     LabeledContent("Serial", value: serialText)
                 }
+                LabeledContent("Identifier") {
+                    Text(peer.id.uuidString)
+                        .font(.caption.monospaced())
+                        .foregroundStyle(.secondary)
+                        .textSelection(.enabled)
+                }
             }
 
             Section("Firmware") {

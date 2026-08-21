@@ -121,6 +121,29 @@ now drivable in the Xcode preview canvas through `RootView` — see
   simulate it, have `FirmwareUpdateView` use a preview uploader (mock OTA +
   reconnector, like `OTAUploaderTests`) when `AppEnvironment.isRunningInXcodePreview`.
 
+**Post-batch UX refinements (this session, on `develop`):**
+- `836c665` **connected-device identity → DeviceView** (#18/#19): DeviceInfo Identity
+  gains an "Identifier" row under Serial; SettingsView drops its Connected-Device
+  section and is now **peer-independent** (no `ConnectedPeer`/`AppRouter` deps) —
+  groundwork for #37.
+- `38743c1` **PeripheralScanView Start/Stop scan toggle** (#12): observable
+  `BluetoothManager.isScanning` drives a toolbar toggle + "Scanning…/Paused" header.
+  (Pull-to-refresh deliberately **not** added — scanning is continuous and
+  `pruneStale()` already drops out-of-range devices, so it'd be redundant with the
+  toggle + auto-prune.)
+- `0afe33c` **DFU status text** tidy (maintainer tweak). Tag
+  `post-batch-ui-refinements-history`.
+- **Storage review links (considered, declined):** the Logs tab already *is* the full
+  System Event Log browser and the Snapshots tab (#17) will be the Snapshot History
+  browser; `LogsView` owns its own `NavigationStack` (not push-safe), so a
+  Storage→browser link would duplicate/nest. Kept Storage as management (counts +
+  clear).
+- **Catalogued:** **#37** (main-menu entry — reach Snapshots/Settings without
+  connecting; Backlog/Phase I; depends on #17) and a scope comment on **#25**
+  (client-side logging is already the `BluetoothLogEvent`/`bluetoothEventStream`
+  feed this view merges — no `print`s by design; possible expansion: more client log
+  sources + OSLog bridge + export).
+
 **⏭️ PICK UP HERE (next session):** **#17 SnapshotLoggingView** — its own dedicated
 session (the generic snapshot-logging subsystem: `Snapshot` protocol, type-erased
 field/value system, `SnapshotDataProvider`, capture sessions, file-based

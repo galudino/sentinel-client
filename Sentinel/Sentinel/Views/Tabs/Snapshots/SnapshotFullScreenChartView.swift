@@ -42,6 +42,11 @@ struct SnapshotFullScreenChartView: View {
     @State var xOffsetSamples: Double = 0
     @State var lastXOffsetSamples: Double = 0
 
+    // Focal point held for the duration of a pinch, so zoom stays anchored (to the
+    // scrub cursor, or the window centre when there's no cursor).
+    @State var zoomAnchorOffset: Double = 0
+    @State var zoomAnchorFraction: Double = 0.5
+
     // Scrub + metadata popup.
     @State var selectedSampleIndex: Int?
     /// True while a pinch is in progress, so a stray one-finger drag doesn't scrub.

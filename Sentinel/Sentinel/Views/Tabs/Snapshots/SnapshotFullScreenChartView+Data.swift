@@ -146,9 +146,12 @@ extension SnapshotFullScreenChartView {
     var zoomGesture: some Gesture {
         MagnificationGesture()
             .onChanged { scale in
-                isZooming = true
+                if !isZooming {
+                    isZooming = true
+                    captureZoomAnchor() // pin the focal point once, at pinch start
+                }
                 xZoomScale = min(max(lastXZoomScale * scale, minZoom), maxZoom)
-                clampOffset()
+                applyZoomAnchor() // rescale around the pinned focal point
                 scheduleRedecimate()
             }
             .onEnded { _ in
@@ -157,6 +160,29 @@ extension SnapshotFullScreenChartView {
                 recomputeViewport()
                 isZooming = false
             }
+    }
+
+    /// Record the sample the zoom should pivot around — the scrub cursor if it's
+    /// on screen, otherwise the centre of the visible window — and its fractional
+    /// position across the window, held constant for the pinch.
+    private func captureZoomAnchor() {
+        let total = Double(session.logEntries.count)
+        let width = total / Double(xZoomScale)
+        let offset = max(0, min(xOffsetSamples, max(0, total - width)))
+        let range = visibleXRange
+        let cursorOffset = selectedSampleIndex.map(Double.init)
+        let onScreen = cursorOffset.map { range.contains(Int($0) + 1) } ?? false
+
+        zoomAnchorOffset = (onScreen ? cursorOffset : nil) ?? (offset + width / 2)
+        zoomAnchorFraction = width > 0 ? (zoomAnchorOffset - offset) / width : 0.5
+    }
+
+    /// Position the window so the pinned focal point keeps the same fractional
+    /// position after a zoom-scale change.
+    private func applyZoomAnchor() {
+        let width = Double(session.logEntries.count) / Double(xZoomScale)
+        xOffsetSamples = zoomAnchorOffset - zoomAnchorFraction * width
+        clampOffset()
     }
 
     /// One-finger drag scrubs the vertical sample line (a zero-distance drag is a

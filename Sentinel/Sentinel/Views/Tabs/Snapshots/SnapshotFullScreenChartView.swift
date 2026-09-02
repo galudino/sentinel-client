@@ -105,11 +105,29 @@ struct SnapshotFullScreenChartView: View {
                 chart(height: max(200, geometry.size.height - 150))
                 Text("Sample Number").font(.caption2).foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity)
+                cursorStepper
                 if xZoomScale > 1.0 { zoomIndicator }
                 legendSection
             }
             .padding()
         }
+    }
+
+    /// Fine cursor control: nudge the scrub line ±1/5/10 samples.
+    private var cursorStepper: some View {
+        HStack(spacing: 6) {
+            ForEach([-10, -5, -1], id: \.self) { step in
+                Button("\(step)") { stepCursor(by: step) }
+            }
+            Text(selectedSampleIndex.map { "#\($0 + 1)" } ?? "—")
+                .font(.caption2).monospacedDigit().frame(minWidth: 64)
+            ForEach([1, 5, 10], id: \.self) { step in
+                Button("+\(step)") { stepCursor(by: step) }
+            }
+        }
+        .font(.caption2)
+        .buttonStyle(.bordered)
+        .buttonBorderShape(.capsule)
     }
 
     private var scrubberControls: some View {

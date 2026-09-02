@@ -196,6 +196,26 @@ extension SnapshotFullScreenChartView {
             }
     }
 
+    /// Move the scrub cursor by `delta` samples (from 0 if unset), clamped to the
+    /// data, keeping it on screen when zoomed.
+    func stepCursor(by delta: Int) {
+        let count = session.logEntries.count
+        guard count > 0 else { return }
+        let next = max(0, min((selectedSampleIndex ?? 0) + delta, count - 1))
+        selectedSampleIndex = next
+        ensureCursorVisible(sample: next + 1)
+    }
+
+    /// Re-centre the visible window on `sample` if a zoom has pushed it off screen.
+    private func ensureCursorVisible(sample: Int) {
+        guard xZoomScale > 1, !visibleXRange.contains(sample) else { return }
+        let width = Double(session.logEntries.count) / Double(xZoomScale)
+        xOffsetSamples = Double(sample) - width / 2
+        clampOffset()
+        lastXOffsetSamples = xOffsetSamples
+        recomputeViewport()
+    }
+
     func scrub(at location: CGPoint, proxy: ChartProxy) {
         guard let sample: Int = proxy.value(atX: location.x) else { return }
         let clamped = max(1, min(sample, session.logEntries.count))

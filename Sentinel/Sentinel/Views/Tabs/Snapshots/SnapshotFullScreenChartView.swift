@@ -44,6 +44,8 @@ struct SnapshotFullScreenChartView: View {
 
     // Scrub + metadata popup.
     @State var selectedSampleIndex: Int?
+    /// True while a pinch is in progress, so a stray one-finger drag doesn't scrub.
+    @State var isZooming = false
     @State private var showMetadataEnabled = false
     @State private var isPopupExpanded = true
     @State private var popupPosition = CGPoint(x: 16, y: 80)
@@ -110,7 +112,7 @@ struct SnapshotFullScreenChartView: View {
             if let index = selectedSampleIndex {
                 Text("Sample #\(index + 1)").font(.caption2).fontWeight(.medium)
             } else {
-                Text("Tap chart to scrub · pinch to zoom · drag to pan")
+                Text("Drag to scrub · pinch to zoom")
                     .font(.caption2).foregroundStyle(.secondary)
             }
             Spacer()
@@ -138,16 +140,11 @@ struct SnapshotFullScreenChartView: View {
             chartContent
                 .frame(height: height)
                 .chartOverlay { proxy in
-                    GeometryReader { chartGeometry in
-                        Rectangle()
-                            .fill(.clear)
-                            .contentShape(Rectangle())
-                            .gesture(zoomGesture)
-                            .simultaneousGesture(panGesture(geometry: chartGeometry))
-                            .simultaneousGesture(
-                                SpatialTapGesture().onEnded { event in scrub(at: event.location, proxy: proxy) }
-                            )
-                    }
+                    Rectangle()
+                        .fill(.clear)
+                        .contentShape(Rectangle())
+                        .gesture(scrubGesture(proxy: proxy))
+                        .simultaneousGesture(zoomGesture)
                 }
             if let field = rightAxisField {
                 Text(field.unit).font(.caption2).foregroundStyle(.orange)

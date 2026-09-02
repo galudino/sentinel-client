@@ -146,6 +146,7 @@ extension SnapshotFullScreenChartView {
     var zoomGesture: some Gesture {
         MagnificationGesture()
             .onChanged { scale in
+                isZooming = true
                 xZoomScale = min(max(lastXZoomScale * scale, minZoom), maxZoom)
                 clampOffset()
                 scheduleRedecimate()
@@ -154,23 +155,18 @@ extension SnapshotFullScreenChartView {
                 lastXZoomScale = xZoomScale
                 lastXOffsetSamples = xOffsetSamples
                 recomputeViewport()
+                isZooming = false
             }
     }
 
-    func panGesture(geometry: GeometryProxy) -> some Gesture {
-        DragGesture(minimumDistance: 12)
+    /// One-finger drag scrubs the vertical sample line (a zero-distance drag is a
+    /// tap, so tapping an exact point still works). Suppressed while pinching so it
+    /// never fights the zoom.
+    func scrubGesture(proxy: ChartProxy) -> some Gesture {
+        DragGesture(minimumDistance: 0)
             .onChanged { value in
-                guard xZoomScale > 1 else { return }
-                let total = Double(session.logEntries.count)
-                let visibleWidth = total / Double(xZoomScale)
-                let samplesPerPixel = visibleWidth / Double(max(geometry.size.width, 1))
-                xOffsetSamples = lastXOffsetSamples - Double(value.translation.width) * samplesPerPixel
-                clampOffset()
-                scheduleRedecimate()
-            }
-            .onEnded { _ in
-                lastXOffsetSamples = xOffsetSamples
-                recomputeViewport()
+                guard !isZooming else { return }
+                scrub(at: value.location, proxy: proxy)
             }
     }
 
@@ -178,6 +174,26 @@ extension SnapshotFullScreenChartView {
         guard let sample: Int = proxy.value(atX: location.x) else { return }
         let clamped = max(1, min(sample, session.logEntries.count))
         selectedSampleIndex = clamped - 1
+        autoPan(towardSample: clamped)
+    }
+
+    /// When zoomed, scrubbing to the edge of the visible window nudges the window
+    /// so a zoomed chart stays navigable with the same one-finger gesture.
+    private func autoPan(towardSample sample: Int) {
+        guard xZoomScale > 1 else { return }
+        let range = visibleXRange
+        let window = Double(range.upperBound - range.lowerBound)
+        let margin = max(1.0, window * 0.08)
+        if Double(sample) <= Double(range.lowerBound) + margin {
+            xOffsetSamples -= margin
+        } else if Double(sample) >= Double(range.upperBound) - margin {
+            xOffsetSamples += margin
+        } else {
+            return
+        }
+        clampOffset()
+        lastXOffsetSamples = xOffsetSamples
+        scheduleRedecimate()
     }
 }
 

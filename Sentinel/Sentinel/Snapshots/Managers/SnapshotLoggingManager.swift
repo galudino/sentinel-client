@@ -387,10 +387,12 @@ final class SnapshotLoggingManager<Provider: SnapshotDataProvider> {
         lastNotificationTime[sessionId] = nil
         sessionFields[sessionId] = fields
 
-        try await provider.setStreaming(true)
-
-        // Capture the `Sendable` stream (not the provider) so the task closure
-        // crosses no non-`Sendable` state.
+        // Attach the consumer BEFORE arming the stream so no frame the device
+        // pushes right after enable is dropped. `snapshotStream()` subscribes to
+        // the value-update publisher eagerly; `setStreaming(true)` then arms the
+        // firmware flag + CCCD, after which frames flow into the live task.
+        // (Capture the `Sendable` stream, not the provider, so the task closure
+        // crosses no non-`Sendable` state.)
         let snapshots = provider.snapshotStream()
         notificationTasks[sessionId] = Task { @MainActor in
             for await snapshot in snapshots {
@@ -398,6 +400,8 @@ final class SnapshotLoggingManager<Provider: SnapshotDataProvider> {
                 handleNotificationSnapshot(snapshot, sessionId: sessionId)
             }
         }
+
+        try await provider.setStreaming(true)
     }
 
     private func handleNotificationSnapshot(_ snapshot: SnapshotType, sessionId: UUID) {
@@ -517,7 +521,7 @@ final class SnapshotLoggingManager<Provider: SnapshotDataProvider> {
 
     // MARK: Session persistence (file-based)
 
-    private func loadCompletedSessions() {
+    func loadCompletedSessions() {
         let snapshotType = provider.snapshotTypeIdentifier
         let filtered = sessionFileManager.loadIndex().filter {
             $0.snapshotType == snapshotType && ($0.status == .completed || $0.status == .stopped)

@@ -41,6 +41,9 @@ struct SnapshotLoggingView: View {
 
     @State private var manager: SnapshotLoggingManager<DeviceSnapshotDataProvider>
     @State private var path = NavigationPath()
+    #if DEBUG
+        @State private var isGeneratingTestData = false
+    #endif
 
     init(peer: ConnectedPeer) {
         self.peer = peer
@@ -67,17 +70,73 @@ struct SnapshotLoggingView: View {
 
     var body: some View {
         NavigationStack(path: $path) {
-            SnapshotLoggingContent<DeviceSnapshotDataProvider>()
-                .navigationDestination(for: SnapshotRoute.self) { route in
-                    switch route {
-                    case let .deviceSnapshotSessionChart(session):
-                        SnapshotSessionChartView(session: session)
-                    }
-                }
+            content
         }
         .environment(manager)
     }
+
+    @ViewBuilder private var content: some View {
+        let base = SnapshotLoggingContent<DeviceSnapshotDataProvider>()
+            .navigationDestination(for: SnapshotRoute.self) { route in
+                switch route {
+                case let .deviceSnapshotSessionChart(session):
+                    SnapshotSessionChartView(session: session)
+                }
+            }
+        #if DEBUG
+            base
+                .toolbar { ToolbarItem(placement: .topBarTrailing) { debugMenu } }
+                .overlay { if isGeneratingTestData { generatingOverlay } }
+        #else
+            base
+        #endif
+    }
 }
+
+#if DEBUG
+    private extension SnapshotLoggingView {
+        /// Generate synthetic completed sessions (no live capture needed) to exercise
+        /// the chart + disk paging at realistic sizes. 0.1 s cadence → ~600 samples/min.
+        var debugMenu: some View {
+            Menu {
+                Button("5 min · ~3k samples") { generateTestSession(minutes: 5) }
+                Button("30 min · ~18k samples") { generateTestSession(minutes: 30) }
+                Button("60 min · ~36k samples") { generateTestSession(minutes: 60) }
+            } label: {
+                Image(systemName: "ladybug")
+            }
+            .disabled(isGeneratingTestData)
+        }
+
+        var generatingOverlay: some View {
+            ZStack {
+                Color.black.opacity(0.25).ignoresSafeArea()
+                VStack(spacing: 12) {
+                    ProgressView()
+                    Text("Generating test session…").font(.caption)
+                }
+                .padding(20)
+                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
+            }
+        }
+
+        func generateTestSession(minutes: Int) {
+            isGeneratingTestData = true
+            let interval = 0.1
+            let count = Int(Double(minutes) * 60 / interval)
+            Task {
+                let entries = manager.dataProvider.syntheticEntries(count: count, intervalSeconds: interval)
+                await manager.installSyntheticSession(
+                    name: "Synthetic \(minutes)m · \(count) samples",
+                    pollingInterval: interval,
+                    captureMode: .notifications,
+                    entries: entries
+                )
+                isGeneratingTestData = false
+            }
+        }
+    }
+#endif
 
 // MARK: - SnapshotLoggingContent
 

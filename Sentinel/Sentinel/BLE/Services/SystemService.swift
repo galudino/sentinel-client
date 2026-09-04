@@ -29,6 +29,12 @@ protocol SystemService {
     func requestBootloaderMode() async throws
     func setCPUTemperatureNotifying(_ enabled: Bool) async throws
     func cpuTemperatureNotifications() -> AsyncStream<UInt16>
+    /// Device readiness (boot/POST state, #69). Read once on connect to gate the
+    /// sensor UI, then subscribe for the `→ ready` transition when connecting
+    /// mid-boot.
+    func readDeviceReadiness() async throws -> DeviceReadiness
+    func setDeviceReadinessNotifying(_ enabled: Bool) async throws
+    func deviceReadinessNotifications() -> AsyncStream<DeviceReadiness>
 }
 
 struct SystemServiceClient<Transport: BluetoothPeripheralTransport>: SystemService {
@@ -87,6 +93,23 @@ struct SystemServiceClient<Transport: BluetoothPeripheralTransport>: SystemServi
     func cpuTemperatureNotifications() -> AsyncStream<UInt16> {
         transport.notifications(for: SystemCharacteristicUUID.cpuTemperature.cbuuid, ofService: service)
     }
+
+    func readDeviceReadiness() async throws -> DeviceReadiness {
+        try await transport.read(characteristic: SystemCharacteristicUUID.deviceReadiness.cbuuid, ofService: service)
+            ?? DeviceReadiness(state: .booting, failedSubsystemID: 0)
+    }
+
+    func setDeviceReadinessNotifying(_ enabled: Bool) async throws {
+        try await transport.setNotify(
+            enabled,
+            characteristic: SystemCharacteristicUUID.deviceReadiness.cbuuid,
+            ofService: service
+        )
+    }
+
+    func deviceReadinessNotifications() -> AsyncStream<DeviceReadiness> {
+        transport.notifications(for: SystemCharacteristicUUID.deviceReadiness.cbuuid, ofService: service)
+    }
 }
 
 final class MockSystemService: SystemService, @unchecked Sendable {
@@ -94,17 +117,20 @@ final class MockSystemService: SystemService, @unchecked Sendable {
     var firmwareVersion: FirmwareVersion
     var platformID: PlatformID
     var cpuTemperature: UInt16
+    var readiness: DeviceReadiness
 
     init(
         serialNumber: UInt32 = 0x0000_ABCD,
         firmwareVersion: FirmwareVersion = FirmwareVersion(major: 1, minor: 0, patch: 0, build: 16),
         platformID: PlatformID = .cyble416045,
-        cpuTemperature: UInt16 = 4200
+        cpuTemperature: UInt16 = 4200,
+        readiness: DeviceReadiness = .ready
     ) {
         self.serialNumber = serialNumber
         self.firmwareVersion = firmwareVersion
         self.platformID = platformID
         self.cpuTemperature = cpuTemperature
+        self.readiness = readiness
     }
 
     func readSerialNumber() async throws -> UInt32 { serialNumber }
@@ -115,4 +141,7 @@ final class MockSystemService: SystemService, @unchecked Sendable {
     func requestBootloaderMode() async throws {}
     func setCPUTemperatureNotifying(_: Bool) async throws {}
     func cpuTemperatureNotifications() -> AsyncStream<UInt16> { .init { $0.yield(cpuTemperature); $0.finish() } }
+    func readDeviceReadiness() async throws -> DeviceReadiness { readiness }
+    func setDeviceReadinessNotifying(_: Bool) async throws {}
+    func deviceReadinessNotifications() -> AsyncStream<DeviceReadiness> { .init { $0.yield(readiness); $0.finish() } }
 }

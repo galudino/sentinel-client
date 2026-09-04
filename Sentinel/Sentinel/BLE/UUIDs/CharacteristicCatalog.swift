@@ -33,6 +33,7 @@ enum GATTDataType: Sendable {
     case deviceSnapshot // packed 80-byte DeviceSnapshot
     case deviceSnapshotBlock // N × DeviceSnapshot
     case eventRecordBlock // N × 36-byte event record
+    case deviceReadiness // 2-byte [state, failedSubsystem] (#69)
     case bytes // opaque
 
     /// Fixed byte width for the fixed-width scalar types; `nil` for variable.
@@ -105,6 +106,20 @@ enum GATTDataType: Sendable {
         }
     }
 
+    /// Decode the 2-byte Device Readiness value into an explorer-friendly string.
+    private func interpretedReadiness(_ data: Data) -> String {
+        guard let readiness = DeviceReadiness.fromData(data) else { return "(short)" }
+        switch readiness.state {
+        case .booting: return "Booting"
+        case .postRunning: return "Running self-test"
+        case .ready: return "Ready"
+        case .degraded:
+            let subsystem = readiness.failedSubsystem?.displayName
+                ?? "subsystem 0x\(hex(readiness.failedSubsystemID))"
+            return "Degraded — \(subsystem) failed"
+        }
+    }
+
     /// A byte-count summary for the non-scalar structured / opaque / text types.
     private func structuredSummary(_ data: Data) -> String {
         switch self {
@@ -113,6 +128,7 @@ enum GATTDataType: Sendable {
         case .deviceSnapshot: "Device snapshot — \(data.count) B"
         case .deviceSnapshotBlock: "\(data.count / 80) snapshot(s) — \(data.count) B"
         case .eventRecordBlock: "\(data.count / 36) record(s) — \(data.count) B"
+        case .deviceReadiness: interpretedReadiness(data)
         default: "\(data.count) B opaque"
         }
     }
@@ -251,6 +267,14 @@ enum CharacteristicCatalog {
             displayName: "CPU Temperature",
             dataType: .uint16,
             lsbUnit: "0.01 °C",
+            properties: [.read, .notify]
+        ),
+        .init(
+            service: .system,
+            characteristicCBUUID: SystemCharacteristicUUID.deviceReadiness.cbuuid,
+            displayName: "Device Readiness",
+            dataType: .deviceReadiness,
+            lsbUnit: nil,
             properties: [.read, .notify]
         ),
 

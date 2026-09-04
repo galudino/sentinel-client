@@ -20,15 +20,48 @@ the architecture docs rather than letting them accumulate here.
 
 ---
 
-**Last updated:** 2026-08-21 (session 6) — **#17 SnapshotLoggingView DONE** — the
-whole generic snapshot-logging + charting + export subsystem, faithfully ported
-from the proven prior design and adapted to Sentinel. **On feature branch
-`17-snapshot-logging`** (8 incremental commits, tag `17-snapshot-logging-history`
-at the tip); **NOT yet squash-merged to `develop`** — left for a review pass
-given its size (56 files, ~+7900 lines). Build + SwiftFormat + SwiftLint + all
-`SentinelTests` green (13 new tests). To land it, follow the branch workflow:
-squash-merge `17-snapshot-logging` → `develop`, delete the branch (history
-preserved by the tag).
+**Last updated:** 2026-09-04 (session 7). Two things landed:
+
+**1. #17 SnapshotLoggingView — DONE + MERGED.** Squash-merged to `develop`
+(`fc1c931`); pre-squash history at tag `17-snapshot-logging-history`; branch
+deleted; issue closed; board Done. SwiftLint strict + SwiftFormat clean,
+115/115 tests green on iOS 26.4.
+
+**2. #38 Gate MainTabView on device readiness — CODE COMPLETE, on branch
+`38-device-readiness-gate` (`bad1c23`); NOT merged — needs on-device
+validation first** (the firmware half must be flashed). Pairs with firmware
+**#69** (device-readiness characteristic), which is on the firmware
+`release/1.0.2` branch. What it does: consumes a new System-service
+`Device Readiness` characteristic (2 B `[state, failedSubsystem]`, R/Notify,
+UUID `D3E542A5-3476-4A48-B4F5-1D0D0699DB28`). New `DeviceReadiness` model +
+reusable `POSTSubsystem` enum; `SystemService.readDeviceReadiness /
+setDeviceReadinessNotifying / deviceReadinessNotifications`; `ConnectedPeer`
+gains observable `readiness` + `startReadinessMonitoring()` (read once, then
+subscribe for `→ ready`/`degraded`); `DeviceReadinessGate` wraps the **Home**
+tab (initializing spinner while booting/POST, names the failed subsystem when
+degraded) while Logs / Device / Settings stay reachable; GATT-explorer data
+type; preview scenarios; 7 new tests. **To land after on-device check:**
+squash-merge `38-device-readiness-gate` → `develop`, tag
+`38-device-readiness-gate-history`, delete branch, close #38.
+
+**On-device test for #38 (needs firmware `release/1.0.2` flashed):** connect
+while the device is still booting (during the multi-second flash scan) → Home
+shows "Starting Up / Running self-test", Device/Logs/Settings usable; once
+POST completes → Home populates. Force a POST failure → Home names the failed
+subsystem. The GATT explorer's Device Readiness row should read
+"Ready"/"Booting"/"Degraded — …".
+
+**Next in the session queue (ordered, not yet started):** #25
+DebugOutputStreamView (merged local-BLE + device-debug log viewer — large; the
+device-stream decode from #34 Phase I is already handled by the transport's
+String notifications, but the **store + view + entry points are unbuilt**);
+#34 Phase II fragment reassembly (pair with firmware #50); #37 main-menu entry
+(snapshots + settings without connecting). Firmware queue: #71 OTA DFU
+resilience, #68 RTC SQW spam — both on `release/1.0.2`.
+
+---
+
+### Historical: #17 subsystem detail (retained for reference)
 
 - **Layout:** model + engine under `Sentinel/Snapshots/` (`Model/Common`,
   `Model/DeviceSnapshot`, `Managers`); views under `Views/Tabs/Snapshots/`. The

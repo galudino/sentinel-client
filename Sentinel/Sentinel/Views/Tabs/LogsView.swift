@@ -21,6 +21,10 @@ struct LogsView: View {
     @State private var filter: EventFilter = .all
     @State private var isLoading = false
     @State private var lastSync: Date?
+    /// Diagnostics so an empty list distinguishes read-failure vs 0-records vs
+    /// records-present-but-undecodable (firmware issue vs client issue).
+    @State private var loadError: String?
+    @State private var deviceRecordCount: UInt32?
 
     var body: some View {
         NavigationStack {
@@ -69,8 +73,12 @@ struct LogsView: View {
             ContentUnavailableView {
                 Label("No Events", systemImage: "list.bullet.indent")
             } description: {
-                if let lastSync {
-                    Text("Last synced \(lastSync.formatted(.relative(presentation: .numeric)))")
+                if let loadError {
+                    Text("Couldn't read the event log: \(loadError)")
+                } else if let deviceRecordCount, deviceRecordCount > 0 {
+                    Text("The device reports \(deviceRecordCount) record(s), but none decoded (format mismatch).")
+                } else if lastSync != nil {
+                    Text("The device reports 0 events. Pull to refresh.")
                 } else {
                     Text("The device hasn't logged any events yet.")
                 }
@@ -83,10 +91,18 @@ struct LogsView: View {
     private func load() async {
         isLoading = true
         defer { isLoading = false }
-        guard let records = try? await eventLog.readAllRecords() else { return }
-        let sorted = records.sorted { $0.timestamp > $1.timestamp }
-        entries = sorted.enumerated().map { EventEntry(id: $0.offset, record: $0.element) }
-        lastSync = .now
+        do {
+            // Read the count separately so we can tell "0 on device" (firmware
+            // hasn't logged / empty) from "N on device but none decoded" (client).
+            deviceRecordCount = try await eventLog.readRecordCount()
+            let records = try await eventLog.readAllRecords()
+            let sorted = records.sorted { $0.timestamp > $1.timestamp }
+            entries = sorted.enumerated().map { EventEntry(id: $0.offset, record: $0.element) }
+            loadError = nil
+            lastSync = .now
+        } catch {
+            loadError = error.localizedDescription
+        }
     }
 }
 

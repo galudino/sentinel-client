@@ -52,6 +52,12 @@ final nonisolated class ConnectedPeer: BluetoothPeripheralTransport, Identifiabl
     /// a hardcoded 244.
     private(set) var negotiatedMTU: Int = 23
 
+    /// Device readiness (boot/POST state, #69), refreshed by
+    /// ``startReadinessMonitoring()``. `.booting` until the first read; MainTabView
+    /// gates the sensor-dependent UI on this so a central that connects mid-boot
+    /// never renders stale/zero sensor values as if real.
+    private(set) var readiness = DeviceReadiness(state: .booting, failedSubsystemID: 0)
+
     /// The owned peripheral, or `nil` for a detached (preview/test) peer.
     private let peripheral: Peripheral?
     private let central: CentralManager?
@@ -95,6 +101,26 @@ final nonisolated class ConnectedPeer: BluetoothPeripheralTransport, Identifiabl
         guard let peripheral else { return }
         if let value = try? await peripheral.readRSSI() {
             rssi = value.intValue
+        }
+    }
+
+    /// Read device readiness once, then subscribe for transitions — so a central
+    /// that connected mid-POST observes `→ ready` (or `→ degraded`) without
+    /// polling. Updates ``readiness`` and returns once a terminal state
+    /// (ready/degraded) is reached. Safe no-op on a plain detached peer.
+    /// `@MainActor` so the ``readiness`` mutations drive SwiftUI observation and
+    /// the `SystemService` reads resolve on the actor the UI calls them from.
+    @MainActor
+    func startReadinessMonitoring() async {
+        let system = system
+        if let value = try? await system.readDeviceReadiness() {
+            readiness = value
+        }
+        guard readiness.isInitializing else { return } // already ready/degraded
+        try? await system.setDeviceReadinessNotifying(true)
+        for await value in system.deviceReadinessNotifications() {
+            readiness = value
+            if !value.isInitializing { break } // reached ready / degraded
         }
     }
 
@@ -225,7 +251,12 @@ enum ConnectedPeerError: Error {
         /// HomeView is previewed on its own. The event log has no byte encoder yet,
         /// so LogsView still shows its empty state here. Leaf views should still
         /// preview with `Mock*Service` directly.
-        static func preview(name: String? = "Sentinel", rssi: Int = -58, mtu: Int = 247) -> ConnectedPeer {
+        static func preview(
+            name: String? = "Sentinel",
+            rssi: Int = -58,
+            mtu: Int = 247,
+            readiness: DeviceReadiness = .ready
+        ) -> ConnectedPeer {
             let peer = ConnectedPeer(name: name)
             let transport = MockBluetoothTransport()
 
@@ -249,6 +280,7 @@ enum ConnectedPeerError: Error {
             transport.setReadValue(PlatformID.cyble416045.rawValue, for: SystemCharacteristicUUID.platformID.cbuuid)
             transport.setReadValue(UInt32(0x0000_ABCD), for: SystemCharacteristicUUID.serialNumber.cbuuid)
             transport.setReadValue(UInt16(4200), for: SystemCharacteristicUUID.cpuTemperature.cbuuid)
+            transport.setReadValue(readiness, for: SystemCharacteristicUUID.deviceReadiness.cbuuid)
 
             // Snapshot history (paged store) — the mock transport returns the same
             // block per read, so a record count matching a single seeded block
@@ -270,6 +302,7 @@ enum ConnectedPeerError: Error {
             peer.previewTransport = transport
             peer.rssi = rssi
             peer.negotiatedMTU = mtu
+            peer.readiness = readiness // reflect the state without running the monitor task
             return peer
         }
     }

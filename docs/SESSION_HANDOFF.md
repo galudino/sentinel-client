@@ -20,44 +20,39 @@ the architecture docs rather than letting them accumulate here.
 
 ---
 
-**Last updated:** 2026-09-04 (session 7). Two things landed:
+**Last updated:** 2026-09-15 (session 8). Both prior features are now merged +
+on-device-validated:
 
-**1. #17 SnapshotLoggingView — DONE + MERGED.** Squash-merged to `develop`
-(`fc1c931`); pre-squash history at tag `17-snapshot-logging-history`; branch
-deleted; issue closed; board Done. SwiftLint strict + SwiftFormat clean,
-115/115 tests green on iOS 26.4.
+**#17 SnapshotLoggingView — DONE + MERGED** (`fc1c931`, tag
+`17-snapshot-logging-history`; closed; board Done).
 
-**2. #38 Gate MainTabView on device readiness — CODE COMPLETE, on branch
-`38-device-readiness-gate` (`bad1c23`); NOT merged — needs on-device
-validation first** (the firmware half must be flashed). Pairs with firmware
-**#69** (device-readiness characteristic), which is on the firmware
-`release/1.0.2` branch. What it does: consumes a new System-service
-`Device Readiness` characteristic (2 B `[state, failedSubsystem]`, R/Notify,
-UUID `D3E542A5-3476-4A48-B4F5-1D0D0699DB28`). New `DeviceReadiness` model +
-reusable `POSTSubsystem` enum; `SystemService.readDeviceReadiness /
-setDeviceReadinessNotifying / deviceReadinessNotifications`; `ConnectedPeer`
-gains observable `readiness` + `startReadinessMonitoring()` (read once, then
-subscribe for `→ ready`/`degraded`); `DeviceReadinessGate` wraps the **Home**
-tab (initializing spinner while booting/POST, names the failed subsystem when
-degraded) while Logs / Device / Settings stay reachable; GATT-explorer data
-type; preview scenarios; 7 new tests. **To land after on-device check:**
-squash-merge `38-device-readiness-gate` → `develop`, tag
-`38-device-readiness-gate-history`, delete branch, close #38.
+**#38 Gate MainTabView on device readiness — DONE + MERGED + VALIDATED.**
+Squash-merged to `develop` (`44bc2b8`); pre-squash history at tag
+`38-device-readiness-gate-history`; branch deleted; #38 closed; board Done.
+SwiftLint strict + SwiftFormat clean; 122/122 tests on iOS 26.4. **On-device
+(firmware 1.0.2.92):** the `ready` path populates Home end-to-end; the
+`degraded` path correctly surfaced a `record_store` POST failure (named the
+subsystem, kept Device/Logs/Settings reachable). Pairs with firmware **#69**
+(device-readiness characteristic, `release/1.0.2`, validated + Done). Consumes
+the System `Device Readiness` characteristic (2 B `[state, failedSubsystem]`,
+R/Notify, UUID `D3E542A5-3476-4A48-B4F5-1D0D0699DB28`) via `DeviceReadiness` +
+`POSTSubsystem` models, `SystemService` read/notify trio, `ConnectedPeer`
+observable `readiness` + `startReadinessMonitoring()`, and the
+`DeviceReadinessGate` on the Home tab.
 
-**On-device test for #38 (needs firmware `release/1.0.2` flashed):** connect
-while the device is still booting (during the multi-second flash scan) → Home
-shows "Starting Up / Running self-test", Device/Logs/Settings usable; once
-POST completes → Home populates. Force a POST failure → Home names the failed
-subsystem. The GATT explorer's Device Readiness row should read
-"Ready"/"Booting"/"Degraded — …".
+> Firmware note: the paged-read fix (#72) is on `release/1.0.2` and read cleanly
+> on-device (no `INVALID_OFFSET`), but the fresh flash meant a near-empty store —
+> the exact blob-read path wasn't re-stressed. Not a client concern.
 
-**Next in the session queue (ordered, not yet started):** #25
-DebugOutputStreamView (merged local-BLE + device-debug log viewer — large; the
-device-stream decode from #34 Phase I is already handled by the transport's
-String notifications, but the **store + view + entry points are unbuilt**);
-#34 Phase II fragment reassembly (pair with firmware #50); #37 main-menu entry
-(snapshots + settings without connecting). Firmware queue: #71 OTA DFU
-resilience, #68 RTC SQW spam — both on `release/1.0.2`.
+**Next in the session queue (ordered, not started):** **#25**
+DebugOutputStreamView (merged local-BLE + device-debug log viewer — large; #34
+Phase I decode is already handled by the transport's `String` notifications, but
+the **store + view + entry points are unbuilt**) → **#34** Phase II fragment
+reassembly (pair with firmware #50) → **#37** main-menu entry (snapshots +
+settings without connecting) → **#41** unified snapshot review (Phase I,
+Backlog) → **#42** surface firmware build-info in the UI (Phase I, Backlog;
+pairs with firmware #73). Firmware queue on `release/1.0.2`: #71 OTA DFU
+resilience, #68 RTC SQW spam, #74 seed RTC early in boot.
 
 ---
 

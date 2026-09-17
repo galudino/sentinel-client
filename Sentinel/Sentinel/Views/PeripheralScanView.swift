@@ -12,9 +12,11 @@ import SwiftUI
 /// with signal + last-seen, and connects the one the user taps (driving the router
 /// to `.connecting`).
 ///
-/// Deferred to their owning issues: the **Trusted devices** section (needs the
-/// paired-peer registry, #23) and the toolbar **Debug** button → `DebugOutputStreamView`
-/// (#25). Everything else — live scan list, RSSI, staleness fade, empty state,
+/// The toolbar **Debug** button pushes `DebugOutputStreamView` (#25) so the BLE
+/// handshake is watchable live from the entry screen (pre-connection, so it shows
+/// local events only — there is no device stream yet). Still deferred to its owning
+/// issue: the **Trusted devices** section (needs the paired-peer registry, #23).
+/// Everything else — live scan list, RSSI, staleness fade, empty state,
 /// Bluetooth-unavailable/permission path, connect-on-tap — is here.
 struct PeripheralScanView: View {
     @Environment(AppRouter.self) private var router
@@ -65,6 +67,16 @@ struct PeripheralScanView: View {
                     }
                 }
                 .disabled(unavailable != nil)
+            }
+            ToolbarItem(placement: .topBarTrailing) {
+                NavigationLink {
+                    DebugOutputStreamView(
+                        localEvents: { bluetoothManager.bluetoothEventStream() },
+                        deviceStream: nil
+                    )
+                } label: {
+                    Label("Debug", systemImage: "ladybug")
+                }
             }
         }
         .task {

@@ -27,6 +27,7 @@ struct DeviceView: View {
     let firmwareUpdateAvailable: Bool
 
     @Environment(AppRouter.self) private var router
+    @Environment(BluetoothManager.self) private var bluetoothManager
     @Environment(\.horizontalSizeClass) private var hSize
 
     @State private var firmwareVersion: FirmwareVersion?
@@ -144,14 +145,12 @@ struct DeviceView: View {
         case .storage:
             StorageView(eventLog: peer.systemEventLog, snapshots: peer.snapshotHistory)
         case .debugStream:
-            // #25 DebugOutputStreamView lands next; utilitarian placeholder for now.
-            ContentUnavailableView(
-                "Debug Output",
-                systemImage: "text.alignleft",
-                description: Text("The live debug output stream arrives in #25.")
+            // Merged local BLE events + the device's own debug output (#25). Here
+            // the peer is live, so the device stream is present.
+            DebugOutputStreamView(
+                localEvents: { bluetoothManager.bluetoothEventStream() },
+                deviceStream: peer.debugStream
             )
-            .navigationTitle("Debug Output")
-            .navigationBarTitleDisplayMode(.inline)
         case .gattExplorer:
             GATTExplorerView(transport: peer)
         case .bme280Config, .ds3231Config, .none:
@@ -174,6 +173,7 @@ struct DeviceView: View {
             firmwareUpdateAvailable: false
         )
         .environment(AppRouter(bluetoothManager: BluetoothManager()))
+        .environment(BluetoothManager())
         .environment(ImportedFirmwareStore())
     }
 
@@ -184,6 +184,7 @@ struct DeviceView: View {
             firmwareUpdateAvailable: true
         )
         .environment(AppRouter(bluetoothManager: BluetoothManager()))
+        .environment(BluetoothManager())
         .environment(ImportedFirmwareStore())
     }
 #endif

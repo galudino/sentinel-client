@@ -186,7 +186,7 @@ struct DebugOutputStreamView: View {
 
     private func newEntriesBanner(_ action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            Label("\(newCount) new", systemImage: sortNewestFirst ? "chevron.up" : "chevron.down")
+            Label("\(newCount) new", systemImage: sortNewestFirst ? "arrow.up.to.line" : "arrow.down.to.line")
                 .font(.caption.weight(.semibold))
                 .padding(.horizontal, 14)
                 .padding(.vertical, 8)
@@ -232,9 +232,13 @@ struct DebugOutputStreamView: View {
                 autoScroll.toggle()
             } label: {
                 // Direction-aware: the arrow points toward the latest edge (which
-                // flips with sort order); fill + tint carry the on/off state.
-                Label("Follow new entries", systemImage: sortNewestFirst ? "arrow.up.to.line" : "arrow.down.to.line")
-                    .symbolVariant(autoScroll ? .fill : .none)
+                // flips with sort order); fill + tint carry the on/off state
+                // (arrow.{down,up}.to.line.circle has real fill/outline variants).
+                Label(
+                    "Follow new entries",
+                    systemImage: sortNewestFirst ? "arrow.up.to.line.circle" : "arrow.down.to.line.circle"
+                )
+                .symbolVariant(autoScroll ? .fill : .none)
             }
             .tint(autoScroll ? .accentColor : .secondary)
             .accessibilityValue(autoScroll ? "On" : "Off")

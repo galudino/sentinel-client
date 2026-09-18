@@ -49,6 +49,7 @@ struct GATTContractTests {
         #expect(SystemCharacteristicUUID.requestBootloaderMode.rawValue == "9EA19980-36C2-49CD-A348-CCD803820915")
         #expect(SystemCharacteristicUUID.platformID.rawValue == "EC5DBBC3-B5D1-40D3-8022-D4531CDD227C")
         #expect(SystemCharacteristicUUID.cpuTemperature.rawValue == "098FA125-5909-4442-B691-7041807581D0")
+        #expect(SystemCharacteristicUUID.deviceReadiness.rawValue == "D3E542A5-3476-4A48-B4F5-1D0D0699DB28")
 
         #expect(
             SnapshotStreamCharacteristicUUID.currentDeviceSnapshot

@@ -87,6 +87,9 @@ enum SystemCharacteristicUUID: String, CaseIterable {
     case platformID = "EC5DBBC3-B5D1-40D3-8022-D4531CDD227C"
     /// R/Notify — `UInt16` 0.01 °C. firmware: CHAR_SYSTEM_CPU_TEMPERATURE.
     case cpuTemperature = "098FA125-5909-4442-B691-7041807581D0"
+    /// R/Notify — 2 B `[state, failedSubsystem]` device readiness (#69).
+    /// firmware: CHAR_SYSTEM_DEVICE_READINESS.
+    case deviceReadiness = "D3E542A5-3476-4A48-B4F5-1D0D0699DB28"
     nonisolated var cbuuid: CBUUID { CBUUID(string: rawValue) }
 }
 

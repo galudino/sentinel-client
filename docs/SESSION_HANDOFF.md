@@ -20,6 +20,97 @@ the architecture docs rather than letting them accumulate here.
 
 ---
 
+**Last updated:** 2026-09-15 (session 8). Both prior features are now merged +
+on-device-validated:
+
+**#17 SnapshotLoggingView — DONE + MERGED** (`fc1c931`, tag
+`17-snapshot-logging-history`; closed; board Done).
+
+**#38 Gate MainTabView on device readiness — DONE + MERGED + VALIDATED.**
+Squash-merged to `develop` (`44bc2b8`); pre-squash history at tag
+`38-device-readiness-gate-history`; branch deleted; #38 closed; board Done.
+SwiftLint strict + SwiftFormat clean; 122/122 tests on iOS 26.4. **On-device
+(firmware 1.0.2.92):** the `ready` path populates Home end-to-end; the
+`degraded` path correctly surfaced a `record_store` POST failure (named the
+subsystem, kept Device/Logs/Settings reachable). Pairs with firmware **#69**
+(device-readiness characteristic, `release/1.0.2`, validated + Done). Consumes
+the System `Device Readiness` characteristic (2 B `[state, failedSubsystem]`,
+R/Notify, UUID `D3E542A5-3476-4A48-B4F5-1D0D0699DB28`) via `DeviceReadiness` +
+`POSTSubsystem` models, `SystemService` read/notify trio, `ConnectedPeer`
+observable `readiness` + `startReadinessMonitoring()`, and the
+`DeviceReadinessGate` on the Home tab.
+
+> Firmware note: the paged-read fix (#72) is on `release/1.0.2` and read cleanly
+> on-device (no `INVALID_OFFSET`), but the fresh flash meant a near-empty store —
+> the exact blob-read path wasn't re-stressed. Not a client concern.
+
+**Next in the session queue (ordered, not started):** **#25**
+DebugOutputStreamView (merged local-BLE + device-debug log viewer — large; #34
+Phase I decode is already handled by the transport's `String` notifications, but
+the **store + view + entry points are unbuilt**) → **#34** Phase II fragment
+reassembly (pair with firmware #50) → **#37** main-menu entry (snapshots +
+settings without connecting) → **#41** unified snapshot review (Phase I,
+Backlog) → **#42** surface firmware build-info in the UI (Phase I, Backlog;
+pairs with firmware #73). Firmware queue on `release/1.0.2`: #71 OTA DFU
+resilience, #68 RTC SQW spam, #74 seed RTC early in boot.
+
+---
+
+### Historical: #17 subsystem detail (retained for reference)
+
+- **Layout:** model + engine under `Sentinel/Snapshots/` (`Model/Common`,
+  `Model/DeviceSnapshot`, `Managers`); views under `Views/Tabs/Snapshots/`. The
+  Xcode project uses synchronized folders, so new files are picked up with no
+  `.pbxproj` edits.
+- **Architecture (kept generic):** `Snapshot` protocol + type-erased value/field
+  system + `SnapshotDataProvider` → one `SnapshotLoggingManager<Provider>` drives
+  every snapshot type. `DeviceSnapshot` is the Phase I conformer; its field
+  catalog/categories reflect the **real firmware telemetry** (environment / RTC /
+  storage / BLE / health). Views are generic over `Provider` and specialized to
+  `DeviceSnapshotDataProvider` at the `SnapshotLoggingView(peer:)` entry point.
+- **Sentinel adaptations vs. the source design (all deliberate):** BLE I/O flows
+  through the connection's `SnapshotStreamService` (+ `SystemService` for device
+  identity via an injected async metadata closure) instead of a monolithic BLE
+  manager; notifications use its `AsyncStream`. Value/persistence types are
+  `nonisolated` (target is `SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor`; disk
+  decode runs on a detached task). `.voomsession`→`.sentinelsession` (magic
+  "SNTL"); "POC"→"device" throughout (incl. `deviceUnixTimeMs`,
+  `deviceToReadLatency`, `deviceTimestampPeriod` timing ids). **Dropped** the
+  source's UserDefaults→binary migration path (no legacy Sentinel sessions).
+  Navigation is the per-tab `NavigationStack` + a `SnapshotRoute` enum (the
+  Sentinel analogue of the source's router). The export **preview reuses the real
+  exporter on a truncated session** (no duplicated CSV/JSON formatting — preview
+  is byte-for-byte the output). Capture supports **both** polling and
+  notifications (the source had deprecated polling).
+- **The one genuinely-new deliverable — long-session chart perf — is done:**
+  `ChartDecimator` (min/max-per-bucket for numeric series, transitions-only for
+  boolean step-lines, viewport slice). The inline session chart decimates the
+  displayed series (cached in `@State`, recomputed only on load/selection). The
+  **full-screen chart** does real pinch-zoom + drag-pan + tap-scrub with
+  **viewport-aware re-decimation** (debounced ~30ms) and `.drawingGroup()`. Full
+  resolution stays on disk and in exports. (Note: the source's full-screen "zoom"
+  state was inert; here zoom/pan actually drive the viewport.)
+- **Known follow-ups / gaps (not blockers):** (1) active-session teardown on
+  disconnect relies on crash-recovery + explicit Stop rather than a
+  `stopOnDisconnect` hook — the manager is per-connection and torn down with the
+  subtree; a footer-on-teardown pass would be cleaner. (2) Sort preference is
+  local `@State` (not persisted) — the source persisted it via a `PresentationState`
+  store Sentinel doesn't have. (3) No SwiftUI previews were added for the new
+  views (they need the manager in the environment); the "preview simulation stack"
+  seam could seed one. (4) Perf is engineered to the acceptance targets but not
+  yet measured against a real ~36k-sample capture on device.
+- **voomair (the port source):** keep it available through any immediate #17
+  finish-up; after this lands, `sentinel-client` is self-sufficient for the
+  snapshot feature (drop voomair unless a later issue ports another subsystem,
+  e.g. the #25/#34 debug-stream UI).
+
+**⏭️ PICK UP HERE (next session):** review + squash-merge #17 to `develop` (and
+`--no-ff` develop → main if batching a release), then the post-#17 roadmap:
+client #25 DebugOutputStreamView + #34 decode (together), #37 main menu / #38
+MainTabView gating, firmware #68 (RTC SQW) / #69 device readiness.
+
+---
+
 **Last updated:** 2026-08-19 (session 5) — **#18 DeviceView + #15 HomeView DONE,
 landed on `develop` as two separated commits.** Build + lint + tests green
 (9 new `CharacteristicCatalogTests`). **Now on `develop`** (linear, **not pushed**):

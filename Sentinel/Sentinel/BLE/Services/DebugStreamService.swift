@@ -13,7 +13,10 @@ import Foundation
 /// streaming is enabled. Mirrors firmware `sentinel_gatt_debug.hpp`.
 /// `DebugOutputStreamView` (#25) merges this with the local
 /// ``BluetoothManager/bluetoothEventStream()`` into one timeline.
-protocol DebugStreamService {
+/// `Sendable` so `DebugOutputStreamView` (#25) can hand the service to a detached
+/// teardown task that disarms the stream even after its consuming `.task` was
+/// cancelled on disappear. Both conformers are value/`@unchecked Sendable`-backed.
+protocol DebugStreamService: Sendable {
     /// Turn the device's debug output stream on or off.
     func setStreaming(_ enabled: Bool) async throws
     /// UTF-8 log lines pushed by the device while streaming is on.
@@ -26,12 +29,30 @@ struct DebugStreamServiceClient<Transport: BluetoothPeripheralTransport>: DebugS
     private var service: CBUUID { SentinelServiceUUID.debugStream.cbuuid }
     private var output: CBUUID { DebugStreamCharacteristicUUID.outputStream.cbuuid }
 
+    /// The firmware gates the stream behind a separate notify-enable flag that must
+    /// be armed **before** the CCCD subscribe (and cleared **after** unsubscribe),
+    /// so the two writes are ordered symmetrically here.
     func setStreaming(_ enabled: Bool) async throws {
-        try await transport.setNotify(enabled, characteristic: output, ofService: service)
+        if enabled {
+            try await streamNotifyEnable(true)
+            try await transport.setNotify(true, characteristic: output, ofService: service)
+        } else {
+            try await transport.setNotify(false, characteristic: output, ofService: service)
+            try await streamNotifyEnable(false)
+        }
     }
 
     func outputNotifications() -> AsyncStream<String> {
         transport.notifications(for: output, ofService: service)
+    }
+
+    private func streamNotifyEnable(_ enabled: Bool) async throws {
+        try await transport.write(
+            UInt8(enabled ? 1 : 0),
+            characteristic: DebugStreamCharacteristicUUID.notifyEnable.cbuuid,
+            ofService: service,
+            type: .withResponse
+        )
     }
 }
 

@@ -33,14 +33,20 @@ struct MainTabView: View {
 
         TabView(selection: $router.selectedTab) {
             Tab(MainTab.home.title, systemImage: MainTab.home.systemImage, value: MainTab.home) {
-                HomeView(
-                    deviceName: peer.name,
-                    bme280: peer.bme280,
-                    ds3231: peer.ds3231,
-                    history: peer.snapshotHistory,
-                    firmwareUpdateAvailable: firmwareUpdateAvailable,
-                    onShowFirmwareUpdate: { router.selectedTab = .device }
-                )
+                // Gate the sensor-dependent Home tab on device readiness (#38): a
+                // central can connect mid-POST (the stack is up before sensors),
+                // so show an initializing/degraded state until `ready` rather than
+                // stale/zero climate + RTC values. Admin tabs below stay reachable.
+                DeviceReadinessGate(readiness: peer.readiness) {
+                    HomeView(
+                        deviceName: peer.name,
+                        bme280: peer.bme280,
+                        ds3231: peer.ds3231,
+                        history: peer.snapshotHistory,
+                        firmwareUpdateAvailable: firmwareUpdateAvailable,
+                        onShowFirmwareUpdate: { router.selectedTab = .device }
+                    )
+                }
             }
 
             Tab(MainTab.logs.title, systemImage: MainTab.logs.systemImage, value: MainTab.logs) {
@@ -61,6 +67,9 @@ struct MainTabView: View {
             }
         }
         .task(id: peer.id) { await refreshUpdateAvailability() }
+        // Concurrent with the firmware-availability read: read readiness and
+        // subscribe for the `→ ready` transition when connecting mid-POST (#38).
+        .task(id: peer.id) { await peer.startReadinessMonitoring() }
     }
 
     /// Recompute ``firmwareUpdateAvailable`` from the device's running version vs
@@ -107,6 +116,30 @@ struct MainTabView: View {
         .environment(AppRouter(bluetoothManager: BluetoothManager()))
         .environment(AppPreferences())
         .environment(ConnectedPeer(name: "Sentinel"))
+        .environment(PairedPeerStore())
+        .environment(ImportedFirmwareStore())
+}
+
+// Connected mid-POST: the Home tab shows the initializing state; Logs / Device /
+// Settings stay reachable (#38).
+#Preview("Initializing (self-test)") {
+    MainTabView()
+        .environment(AppRouter(bluetoothManager: BluetoothManager()))
+        .environment(AppPreferences())
+        .environment(ConnectedPeer.preview(readiness: DeviceReadiness(state: .booting, failedSubsystemID: 0)))
+        .environment(PairedPeerStore())
+        .environment(ImportedFirmwareStore())
+}
+
+// A subsystem failed POST: the Home tab names the failed subsystem instead of an
+// endless spinner; admin tabs remain reachable (#38).
+#Preview("Degraded (BME280 failed)") {
+    MainTabView()
+        .environment(AppRouter(bluetoothManager: BluetoothManager()))
+        .environment(AppPreferences())
+        .environment(ConnectedPeer.preview(
+            readiness: DeviceReadiness(state: .degraded, failedSubsystemID: POSTSubsystem.bme280.rawValue)
+        ))
         .environment(PairedPeerStore())
         .environment(ImportedFirmwareStore())
 }

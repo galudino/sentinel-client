@@ -39,6 +39,12 @@ struct DebugOutputStreamView: View {
     @State private var showFilter = false
     @State private var showClearConfirmation = false
 
+    /// The search text actually applied to the buffer. Debounced off
+    /// ``DebugLogFilter/searchText`` (which the search field mutates on every
+    /// keystroke) so a large buffer isn't re-filtered and the List re-diffed on
+    /// each character — the source of the typing lag.
+    @State private var appliedSearch = ""
+
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
@@ -49,6 +55,11 @@ struct DebugOutputStreamView: View {
             .navigationTitle("Debug Stream")
             .navigationBarTitleDisplayMode(.inline)
             .searchable(text: $filter.searchText, prompt: "Filter messages")
+            .task(id: filter.searchText) {
+                // Debounce: apply the query only after typing settles.
+                try? await Task.sleep(for: .milliseconds(250))
+                appliedSearch = filter.searchText
+            }
             .toolbar { toolbarContent }
             .confirmationDialog(
                 "Clear current log?",
@@ -69,7 +80,10 @@ struct DebugOutputStreamView: View {
     // MARK: - Log feed
 
     private var logList: some View {
-        let visible = filter.apply(to: store.lines)
+        // Apply the debounced search, not the live field, so typing stays snappy.
+        var effective = filter
+        effective.searchText = appliedSearch
+        let visible = effective.apply(to: store.lines)
 
         return ScrollViewReader { proxy in
             List {
@@ -288,6 +302,15 @@ struct DebugOutputStreamView: View {
             .toggleStyle(.switch)
             .controlSize(.mini)
             .fixedSize()
+            Button(role: .destructive) {
+                router.disconnect()
+            } label: {
+                Label("Disconnect", systemImage: "antenna.radiowaves.left.and.right.slash")
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+            .labelStyle(.iconOnly)
+            .tint(.red)
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 10)

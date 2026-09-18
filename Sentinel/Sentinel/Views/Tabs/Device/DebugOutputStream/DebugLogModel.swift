@@ -189,7 +189,7 @@ extension DebugLogLine {
 /// sources to show, which severities to show (independently), which services are
 /// muted, and a plain-text search. Value type so a change is a single observable
 /// mutation on the view's `@State`.
-nonisolated struct DebugLogFilter: Equatable, Sendable, Codable {
+nonisolated struct DebugLogFilter: Equatable, Sendable {
     var showLocal = true
     var showDevice = true
     /// Severities currently shown; all three by default. Independent toggles rather
@@ -231,16 +231,42 @@ nonisolated struct DebugLogFilter: Equatable, Sendable, Codable {
 /// JSON-backed `RawRepresentable` so the filter can persist across view instances
 /// and app launches via `@AppStorage`. A corrupt/absent value falls back to the
 /// default filter.
+///
+/// The JSON round-trips through a dedicated ``Payload`` — **not** `self`. A
+/// `RawRepresentable` type whose `RawValue` is `Codable` gets an `encode(to:)`
+/// that encodes its `rawValue`; if `rawValue` itself encoded `self`, that would
+/// recurse infinitely (stack overflow). Encoding a separate value type breaks the
+/// cycle, so `DebugLogFilter` deliberately is not `Codable`.
 extension DebugLogFilter: RawRepresentable {
+    private nonisolated struct Payload: Codable {
+        var showLocal: Bool
+        var showDevice: Bool
+        var severities: Set<DebugLogLine.Severity>
+        var mutedServices: Set<String>
+        var searchText: String
+    }
+
     nonisolated init?(rawValue: String) {
         guard let data = rawValue.data(using: .utf8),
-              let decoded = try? JSONDecoder().decode(Self.self, from: data)
+              let payload = try? JSONDecoder().decode(Payload.self, from: data)
         else { return nil }
-        self = decoded
+        self.init()
+        showLocal = payload.showLocal
+        showDevice = payload.showDevice
+        severities = payload.severities
+        mutedServices = payload.mutedServices
+        searchText = payload.searchText
     }
 
     nonisolated var rawValue: String {
-        guard let data = try? JSONEncoder().encode(self), let string = String(data: data, encoding: .utf8) else {
+        let payload = Payload(
+            showLocal: showLocal,
+            showDevice: showDevice,
+            severities: severities,
+            mutedServices: mutedServices,
+            searchText: searchText
+        )
+        guard let data = try? JSONEncoder().encode(payload), let string = String(data: data, encoding: .utf8) else {
             return ""
         }
         return string

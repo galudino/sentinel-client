@@ -30,14 +30,23 @@ nonisolated struct DebugLogLine: Identifiable, Hashable, Sendable {
         var glyph: String { self == .local ? "•" : "→" }
     }
 
-    /// Line severity. `Comparable` so a filter can express a *minimum* threshold
-    /// (`>= .warn` shows warnings and errors).
-    nonisolated enum Severity: Int, Comparable, Sendable {
+    /// Line severity. `Comparable` so a filter can express a threshold; `Codable`
+    /// so a persisted filter can round-trip the enabled set.
+    nonisolated enum Severity: Int, Comparable, Codable, Sendable {
         case info
         case warn
         case error
 
         static func < (lhs: Self, rhs: Self) -> Bool { lhs.rawValue < rhs.rawValue }
+
+        /// Map a firmware `<level>` token to a severity.
+        static func fromLevel(_ level: String) -> Severity {
+            switch level.lowercased() {
+            case "warn", "warning": .warn
+            case "error", "err", "fatal", "critical": .error
+            default: .info // info / debug / trace / verbose
+            }
+        }
 
         /// Fixed-width label for the monospaced row (`err ` pads to four columns).
         var label: String {
@@ -58,6 +67,12 @@ nonisolated struct DebugLogLine: Identifiable, Hashable, Sendable {
     /// parsed from a device line, for per-service filtering. `nil` for local events
     /// and unparseable device lines (those are never hidden by the service filter).
     let service: String?
+    /// Source file the line came from (e.g. `sentinel_task_bme280_service.cpp`),
+    /// parsed from `[file:line]`. Captured for future facet filtering (#44).
+    let file: String?
+    /// The firmware function that emitted the line (e.g. `run`, `init`), the token
+    /// after `[file:line]`. Captured for future facet filtering (#44).
+    let function: String?
 
     init(
         id: UUID = UUID(),
@@ -65,7 +80,9 @@ nonisolated struct DebugLogLine: Identifiable, Hashable, Sendable {
         source: Source,
         severity: Severity,
         text: String,
-        service: String? = nil
+        service: String? = nil,
+        file: String? = nil,
+        function: String? = nil
     ) {
         self.id = id
         self.timestamp = timestamp
@@ -73,6 +90,8 @@ nonisolated struct DebugLogLine: Identifiable, Hashable, Sendable {
         self.severity = severity
         self.text = text
         self.service = service
+        self.file = file
+        self.function = function
     }
 }
 
@@ -94,48 +113,73 @@ extension DebugLogLine {
         )
     }
 
-    /// Map one device-side debug line to a timeline line. Phase I treats device
-    /// lines as ``Severity/info`` unless the firmware prefixes them with a
-    /// severity marker (`[WARN]` / `[ERROR]`, case-insensitive), in which case the
-    /// marker is parsed and stripped from the displayed text.
+    /// Structured facets parsed from a device line.
+    nonisolated struct DeviceFacets: Equatable, Sendable {
+        var severity: Severity = .info
+        var service: String?
+        var file: String?
+        var function: String?
+    }
+
+    /// Map one device-side debug line to a timeline line. The firmware format is
+    /// `idx <ts> [file:line] function <level> service: message`; the full line is
+    /// kept as the displayed text, and `<level>`, `service`, `file`, and `function`
+    /// are parsed off it for filtering. Severity comes from `<level>` (falling back
+    /// to a leading `[WARN]`/`[ERROR]` marker, then `info`) — **not** hardcoded, so
+    /// warnings/errors classify correctly regardless of the emitting function.
     nonisolated static func fromDevice(_ raw: String, timestamp: Date = .now) -> DebugLogLine {
-        let (severity, text) = parseDeviceSeverity(raw)
+        let text = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        let facets = parseDeviceFacets(text)
         return DebugLogLine(
             timestamp: timestamp,
             source: .device,
-            severity: severity,
+            severity: facets.severity,
             text: text,
-            service: parseService(text)
+            service: facets.service,
+            file: facets.file,
+            function: facets.function
         )
     }
 
-    /// Extract the firmware service tag from a device line. The firmware format is
-    /// `NNNN <ts> [file.cpp:line] run <sev> <service>: message`, so the token
-    /// between `run <sev> ` and the first `:` is the service (e.g. `bme280_service`,
-    /// `rtc_service`, `cpu_die_temp`). Returns `nil` if the line doesn't match —
-    /// such lines are treated as un-tagged and never hidden by the service filter.
-    nonisolated static func parseService(_ text: String) -> String? {
-        guard let runRange = text.range(of: "] run <") else { return nil }
-        let afterRun = text[runRange.upperBound...]
-        guard let sevEnd = afterRun.range(of: "> ") else { return nil }
-        let afterSeverity = afterRun[sevEnd.upperBound...]
-        guard let colon = afterSeverity.firstIndex(of: ":") else { return nil }
-        let candidate = afterSeverity[..<colon]
-        guard !candidate.isEmpty, !candidate.contains(" ") else { return nil }
-        return String(candidate)
-    }
+    /// Parse the structured firmware fields off a device line. Any field that
+    /// doesn't match is left `nil` (and an un-tagged service is never hidden by the
+    /// service filter). Robust to lines that only partially match the format.
+    nonisolated static func parseDeviceFacets(_ text: String) -> DeviceFacets {
+        var facets = DeviceFacets()
 
-    /// Parse a leading `[WARN]` / `[ERROR]` marker (case-insensitive) off a device
-    /// line, returning the severity and the remaining text. Unmarked lines are
-    /// ``Severity/info``. The raw line is whitespace-trimmed first.
-    private nonisolated static func parseDeviceSeverity(_ raw: String) -> (Severity, String) {
-        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-        let markers: [(String, Severity)] = [("[ERROR]", .error), ("[WARN]", .warn)]
-        for (marker, severity) in markers where trimmed.uppercased().hasPrefix(marker) {
-            let body = trimmed.dropFirst(marker.count).trimmingCharacters(in: .whitespaces)
-            return (severity, body)
+        // [file:line]
+        if let open = text.firstIndex(of: "["), let close = text[open...].firstIndex(of: "]") {
+            let inside = text[text.index(after: open) ..< close]
+            facets.file = inside.split(separator: ":").first.map(String.init)
+
+            // Everything after "]" — "function <level> service: message".
+            let tail = text[text.index(after: close)...].trimmingCharacters(in: .whitespaces)
+            facets.function = tail.split(separator: " ", maxSplits: 1).first.map(String.init)
+
+            // <level>
+            if let levelOpen = tail.firstIndex(of: "<"), let levelClose = tail[levelOpen...].firstIndex(of: ">") {
+                let level = tail[tail.index(after: levelOpen) ..< levelClose]
+                facets.severity = Severity.fromLevel(String(level))
+
+                // service: token between "> " and the first ":".
+                let afterLevel = tail[tail.index(after: levelClose)...]
+                if let colon = afterLevel.firstIndex(of: ":") {
+                    let candidate = afterLevel[..<colon].trimmingCharacters(in: .whitespaces)
+                    if !candidate.isEmpty, !candidate.contains(" ") { facets.service = candidate }
+                }
+            }
         }
-        return (.info, trimmed)
+
+        // Fallback for an older leading-marker convention, when no <level> was found.
+        if facets.severity == .info {
+            let upper = text.uppercased()
+            if upper.hasPrefix("[ERROR]") {
+                facets.severity = .error
+            } else if upper.hasPrefix("[WARN]") {
+                facets.severity = .warn
+            }
+        }
+        return facets
     }
 }
 
@@ -145,7 +189,7 @@ extension DebugLogLine {
 /// sources to show, which severities to show (independently), which services are
 /// muted, and a plain-text search. Value type so a change is a single observable
 /// mutation on the view's `@State`.
-nonisolated struct DebugLogFilter: Equatable, Sendable {
+nonisolated struct DebugLogFilter: Equatable, Sendable, Codable {
     var showLocal = true
     var showDevice = true
     /// Severities currently shown; all three by default. Independent toggles rather
@@ -179,5 +223,26 @@ nonisolated struct DebugLogFilter: Equatable, Sendable {
     var isActive: Bool {
         !showLocal || !showDevice || severities != Self.allSeverities || !mutedServices.isEmpty
             || !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+}
+
+// MARK: - Persistence
+
+/// JSON-backed `RawRepresentable` so the filter can persist across view instances
+/// and app launches via `@AppStorage`. A corrupt/absent value falls back to the
+/// default filter.
+extension DebugLogFilter: RawRepresentable {
+    nonisolated init?(rawValue: String) {
+        guard let data = rawValue.data(using: .utf8),
+              let decoded = try? JSONDecoder().decode(Self.self, from: data)
+        else { return nil }
+        self = decoded
+    }
+
+    nonisolated var rawValue: String {
+        guard let data = try? JSONEncoder().encode(self), let string = String(data: data, encoding: .utf8) else {
+            return ""
+        }
+        return string
     }
 }

@@ -34,27 +34,39 @@ struct DebugLogTests {
 
     // MARK: - Device line parsing
 
-    @Test func deviceLineDefaultsToInfo() {
-        let line = DebugLogLine.fromDevice("bme280 sample: T=22.05")
+    private let sampleDeviceLine =
+        "0056 <2026-09-18 01:47:27.000Z> [sentinel_task_cpu_die_temp_service.cpp:143]"
+            + " run <warn> cpu_die_temp: die=+30 C"
+
+    @Test func deviceLineKeepsFullTextAndParsesSeverityFromLevel() {
+        let line = DebugLogLine.fromDevice(sampleDeviceLine)
         #expect(line.source == .device)
+        #expect(line.text == sampleDeviceLine) // full line preserved, nothing stripped
+        #expect(line.severity == .warn) // from <warn>, not a leading marker
+
+        let err = DebugLogLine.fromDevice("0057 <t> [f.cpp:9] run <error> x: boom")
+        #expect(err.severity == .error)
+        let info = DebugLogLine.fromDevice("0058 <t> [f.cpp:9] init <info> y: ok")
+        #expect(info.severity == .info)
+    }
+
+    @Test func deviceLineParsesFileAndFunction() {
+        let line = DebugLogLine.fromDevice(sampleDeviceLine)
+        #expect(line.file == "sentinel_task_cpu_die_temp_service.cpp")
+        #expect(line.function == "run")
+    }
+
+    @Test func unstructuredDeviceLineIsInfoWithNoFacets() {
+        let line = DebugLogLine.fromDevice("bme280 sample: T=22.05")
         #expect(line.severity == .info)
-        #expect(line.text == "bme280 sample: T=22.05")
+        #expect(line.service == nil)
+        #expect(line.file == nil)
     }
 
-    @Test func deviceLineParsesAndStripsSeverityMarkers() {
-        let warn = DebugLogLine.fromDevice("[WARN] store 80% full")
-        #expect(warn.severity == .warn)
-        #expect(warn.text == "store 80% full")
-
-        let error = DebugLogLine.fromDevice("[ERROR] i2c timeout")
-        #expect(error.severity == .error)
-        #expect(error.text == "i2c timeout")
-    }
-
-    @Test func deviceSeverityMarkerIsCaseInsensitiveAndTrimmed() {
-        let line = DebugLogLine.fromDevice("  [error]  disk lost  ")
-        #expect(line.severity == .error)
-        #expect(line.text == "disk lost")
+    @Test func leadingMarkerFallbackSetsSeverityWithoutLevel() {
+        // No <level> present → fall back to a leading [WARN]/[ERROR] marker.
+        #expect(DebugLogLine.fromDevice("[ERROR] i2c timeout").severity == .error)
+        #expect(DebugLogLine.fromDevice("[WARN] store 80% full").severity == .warn)
     }
 
     // MARK: - Filter
@@ -105,6 +117,20 @@ struct DebugLogTests {
 
         let rtc = DebugLogLine.fromDevice("0055 <...> [file.cpp:265] run <info> rtc_service: 2026-09-18 Fri")
         #expect(rtc.service == "rtc_service")
+
+        // Service parses regardless of the emitting function (not just `run`).
+        let boot = DebugLogLine.fromDevice("0001 <t> [boot.cpp:12] init <info> boot_orchestrator: POST pass")
+        #expect(boot.service == "boot_orchestrator")
+        #expect(boot.function == "init")
+    }
+
+    @Test func filterRoundTripsThroughRawValue() {
+        var filter = DebugLogFilter()
+        filter.severities = [.error]
+        filter.mutedServices = ["bme280_service"]
+        filter.showLocal = false
+        filter.searchText = "boom"
+        #expect(DebugLogFilter(rawValue: filter.rawValue) == filter)
     }
 
     @Test func unparseableAndLocalLinesHaveNoService() {

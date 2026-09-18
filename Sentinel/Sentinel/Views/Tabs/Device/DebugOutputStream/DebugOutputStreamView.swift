@@ -33,18 +33,17 @@ struct DebugOutputStreamView: View {
     @Environment(AppPreferences.self) var prefs
     @Environment(\.dismiss) private var dismiss
 
-    @State private var filter = DebugLogFilter()
-    @State private var showFilter = false
-    @State private var showClearConfirmation = false
-
-    /// Newest-first (latest on top) vs. oldest-first (latest on bottom, like a
-    /// serial monitor — the default).
-    @State private var sortNewestFirst = false
-
+    // Filter, sort, and follow settings persist across console instances and app
+    // launches (per-view filter persistence, generalized in #44).
+    @AppStorage("v1.debugConsole.filter") private var filter = DebugLogFilter()
+    @AppStorage("v1.debugConsole.sortNewestFirst") private var sortNewestFirst = false
     /// Follow new lines to the latest edge when the user is already there. When
     /// off, arrivals never move the viewport — the "N new" banner is the only way
     /// to jump. Toggled from the toolbar.
-    @State private var autoScroll = true
+    @AppStorage("v1.debugConsole.autoScroll") private var autoScroll = true
+
+    @State private var showFilter = false
+    @State private var showClearConfirmation = false
 
     /// Whether the latest-edge anchor is on screen (user is viewing the newest
     /// lines). Drives whether arrivals follow or accrue into the banner.
@@ -223,10 +222,11 @@ struct DebugOutputStreamView: View {
                 autoScroll.toggle()
             } label: {
                 Label(
-                    autoScroll ? "Pause auto-scroll" : "Resume auto-scroll",
-                    systemImage: autoScroll ? "pause.fill" : "play.fill"
+                    autoScroll ? "Following latest" : "Auto-scroll off",
+                    systemImage: autoScroll ? "pin.fill" : "pin.slash"
                 )
             }
+            .tint(autoScroll ? .accentColor : .secondary)
             Button(role: .destructive) {
                 showClearConfirmation = true
             } label: {

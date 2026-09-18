@@ -27,6 +27,11 @@ final class DebugLogStore {
     /// The merged buffer, oldest → newest.
     private(set) var lines: [DebugLogLine] = []
 
+    /// Monotonic count of every line ever appended (never decremented by eviction).
+    /// The console observes this — not `lines.count`, which plateaus at the cap —
+    /// to detect arrivals for the "N new" banner and auto-scroll even at capacity.
+    private(set) var appendCount = 0
+
     /// Whether the floating debug console is on screen. Lives here (rather than as
     /// a separate presenter) so any entry point can raise the console with one
     /// mutation and `RootView` can bind a single `.sheet` to it — the console then
@@ -50,6 +55,7 @@ final class DebugLogStore {
     /// line older than the tail is inserted back among the last ``reorderWindow``
     /// entries; beyond that window it is appended as-is (bounded work, no reindex).
     func append(_ line: DebugLogLine) {
+        appendCount += 1
         if let last = lines.last, line.timestamp < last.timestamp {
             let floor = max(0, lines.count - reorderWindow)
             var index = lines.count

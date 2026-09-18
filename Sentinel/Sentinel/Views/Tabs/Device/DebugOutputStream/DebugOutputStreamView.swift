@@ -20,29 +20,42 @@ import SwiftUI
 /// so the console floats above the root and survives the
 /// scanning → connecting → connected transitions.
 ///
-/// The **pinned header** lists discovered peripherals with a per-row Connect /
-/// Cancel / Retry control driven entirely by ``AppRouter/state`` — so you can
-/// start (and cancel) a connection from inside the console and watch the handshake
-/// stream live, without the control ever scrolling out of reach. Once connected it
-/// collapses to a compact strip with the device-output streaming toggle.
+/// The **pinned header** (in `DebugOutputStreamView+ConnectHeader.swift`) lists
+/// discovered peripherals with a per-row Connect / Cancel / Retry control driven by
+/// ``AppRouter/state`` (collapsing to a connected strip once linked). The **feed**
+/// supports newest-first / oldest-first sort, a messaging-app-style "N new" banner
+/// with an auto-scroll toggle, and rich filtering (source, per-severity,
+/// per-service, and debounced text search).
 struct DebugOutputStreamView: View {
-    @Environment(DebugLogStore.self) private var store
-    @Environment(AppRouter.self) private var router
-    @Environment(BluetoothManager.self) private var bluetoothManager
-    @Environment(AppPreferences.self) private var prefs
+    @Environment(DebugLogStore.self) var store
+    @Environment(AppRouter.self) var router
+    @Environment(BluetoothManager.self) var bluetoothManager
+    @Environment(AppPreferences.self) var prefs
     @Environment(\.dismiss) private var dismiss
 
-    /// When paused, the buffer keeps growing but the view stops auto-scrolling to
-    /// the tail — so the user can read back without new lines yanking the viewport.
-    @State private var paused = false
     @State private var filter = DebugLogFilter()
     @State private var showFilter = false
     @State private var showClearConfirmation = false
 
-    /// The search text actually applied to the buffer. Debounced off
-    /// ``DebugLogFilter/searchText`` (which the search field mutates on every
-    /// keystroke) so a large buffer isn't re-filtered and the List re-diffed on
-    /// each character — the source of the typing lag.
+    /// Newest-first (latest on top) vs. oldest-first (latest on bottom, like a
+    /// serial monitor — the default).
+    @State private var sortNewestFirst = false
+
+    /// Follow new lines to the latest edge when the user is already there. When
+    /// off, arrivals never move the viewport — the "N new" banner is the only way
+    /// to jump. Toggled from the toolbar.
+    @State private var autoScroll = true
+
+    /// Whether the latest-edge anchor is on screen (user is viewing the newest
+    /// lines). Drives whether arrivals follow or accrue into the banner.
+    @State private var atLatestEdge = true
+
+    /// Count of *visible* arrivals since the user last saw the latest edge — the
+    /// banner's number.
+    @State private var newCount = 0
+
+    /// Debounced copy of the search text actually applied to the buffer (typing
+    /// updates the field live; filtering waits for it to settle).
     @State private var appliedSearch = ""
 
     var body: some View {
@@ -50,13 +63,12 @@ struct DebugOutputStreamView: View {
             VStack(spacing: 0) {
                 connectHeader
                 Divider()
-                logList
+                logFeed
             }
             .navigationTitle("Debug Stream")
             .navigationBarTitleDisplayMode(.inline)
             .searchable(text: $filter.searchText, prompt: "Filter messages")
             .task(id: filter.searchText) {
-                // Debounce: apply the query only after typing settles.
                 try? await Task.sleep(for: .milliseconds(250))
                 appliedSearch = filter.searchText
             }
@@ -72,47 +84,110 @@ struct DebugOutputStreamView: View {
                 Text("This empties the on-screen buffer. New activity keeps appending.")
             }
             .sheet(isPresented: $showFilter) {
-                DebugLogFilterSheet(filter: $filter)
+                DebugLogFilterSheet(
+                    filter: $filter,
+                    sortNewestFirst: $sortNewestFirst,
+                    services: discoveredServices
+                )
             }
         }
     }
 
+    /// Distinct firmware services seen in the buffer, sorted — the universe the
+    /// filter sheet offers per-service toggles for.
+    private var discoveredServices: [String] {
+        Array(Set(store.lines.compactMap(\.service))).sorted()
+    }
+
     // MARK: - Log feed
 
-    private var logList: some View {
-        // Apply the debounced search, not the live field, so typing stays snappy.
+    private var logFeed: some View {
         var effective = filter
         effective.searchText = appliedSearch
-        let visible = effective.apply(to: store.lines)
+        let filtered = effective.apply(to: store.lines)
+        // Display order: latest is at the bottom (oldest-first) or top (newest-first).
+        let visible = sortNewestFirst ? Array(filtered.reversed()) : filtered
 
         return ScrollViewReader { proxy in
-            List {
-                ForEach(visible) { line in
-                    DebugLogLineRow(line: line)
-                        .listRowSeparator(.hidden)
-                        .listRowInsets(EdgeInsets(top: 2, leading: 12, bottom: 2, trailing: 12))
-                        .id(line.id)
-                }
-                // Zero-height tail anchor so auto-scroll always has a target even
-                // when the last row is tall/wrapped.
-                Color.clear
-                    .frame(height: 1)
-                    .listRowSeparator(.hidden)
-                    .id(Self.tailAnchor)
-            }
-            .listStyle(.plain)
-            .overlay { if visible.isEmpty { emptyState } }
-            .onChange(of: visible.count) {
-                guard !paused else { return }
+            let scrollToLatest = {
                 withAnimation(.easeOut(duration: 0.15)) {
-                    proxy.scrollTo(Self.tailAnchor, anchor: .bottom)
+                    proxy.scrollTo(Self.latestAnchor, anchor: sortNewestFirst ? .top : .bottom)
                 }
+            }
+
+            ZStack(alignment: sortNewestFirst ? .top : .bottom) {
+                List {
+                    if sortNewestFirst { latestAnchorRow }
+                    ForEach(visible) { line in
+                        DebugLogLineRow(line: line)
+                            .listRowSeparator(.hidden)
+                            .listRowInsets(EdgeInsets(top: 2, leading: 12, bottom: 2, trailing: 12))
+                            .id(line.id)
+                    }
+                    if !sortNewestFirst { latestAnchorRow }
+                }
+                .listStyle(.plain)
+                .overlay { if visible.isEmpty { emptyState } }
+
+                if newCount > 0 {
+                    newEntriesBanner { scrollToLatest(); newCount = 0 }
+                        .padding(.vertical, 10)
+                }
+            }
+            .animation(.spring(duration: 0.25), value: newCount > 0)
+            // Arrivals: observe the monotonic append counter (not lines.count, which
+            // plateaus at the cap). Count only *visible* new lines; follow the tail
+            // if the user is already there and auto-scroll is on, else bank them
+            // into the banner.
+            .onChange(of: store.appendCount) { old, new in
+                guard new > old else { return }
+                let added = store.lines.suffix(new - old)
+                let visibleAdded = effective.apply(to: Array(added)).count
+                guard visibleAdded > 0 else { return }
+                if atLatestEdge, autoScroll {
+                    scrollToLatest()
+                } else {
+                    newCount += visibleAdded
+                }
+            }
+            .onChange(of: autoScroll) { _, enabled in
+                if enabled { scrollToLatest(); newCount = 0 }
+            }
+            .onChange(of: sortNewestFirst) { _, _ in
+                scrollToLatest()
+                newCount = 0
             }
             .task {
-                // Land at the tail when the console opens onto existing history.
-                proxy.scrollTo(Self.tailAnchor, anchor: .bottom)
+                // Land on the latest edge when the console opens onto existing history.
+                scrollToLatest()
             }
         }
+    }
+
+    /// Zero-height marker at the latest end of the list. Its visibility tells us
+    /// whether the user is viewing the newest lines.
+    private var latestAnchorRow: some View {
+        Color.clear
+            .frame(height: 1)
+            .listRowSeparator(.hidden)
+            .id(Self.latestAnchor)
+            .onAppear { atLatestEdge = true; newCount = 0 }
+            .onDisappear { atLatestEdge = false }
+    }
+
+    private func newEntriesBanner(_ action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Label("\(newCount) new", systemImage: sortNewestFirst ? "chevron.up" : "chevron.down")
+                .font(.caption.weight(.semibold))
+                .padding(.horizontal, 14)
+                .padding(.vertical, 8)
+                .background(Color.accentColor, in: Capsule())
+                .foregroundStyle(.white)
+                .shadow(radius: 4, y: 2)
+        }
+        .buttonStyle(.plain)
+        .transition(.move(edge: sortNewestFirst ? .top : .bottom).combined(with: .opacity))
+        .accessibilityLabel("\(newCount) new entries, scroll to latest")
     }
 
     private var emptyState: some View {
@@ -145,9 +220,12 @@ struct DebugOutputStreamView: View {
                 )
             }
             Button {
-                paused.toggle()
+                autoScroll.toggle()
             } label: {
-                Label(paused ? "Resume" : "Pause", systemImage: paused ? "play.fill" : "pause.fill")
+                Label(
+                    autoScroll ? "Pause auto-scroll" : "Resume auto-scroll",
+                    systemImage: autoScroll ? "pause.fill" : "play.fill"
+                )
             }
             Button(role: .destructive) {
                 showClearConfirmation = true
@@ -158,258 +236,8 @@ struct DebugOutputStreamView: View {
         }
     }
 
-    // MARK: - Pinned connect header
-
-    @ViewBuilder private var connectHeader: some View {
-        switch router.state {
-        case let .connected(peer), let .updatingFirmware(peer, _):
-            connectedStrip(peer)
-        default:
-            discoveredTargets
-        }
-    }
-
-    /// Discovered peripherals with per-row Connect / Cancel / Retry. Pinned above
-    /// the (scrolling) log so the control is always reachable while lines stream.
-    private var discoveredTargets: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Label("Discovered", systemImage: "dot.radiowaves.left.and.right")
-                    .font(.footnote.weight(.semibold))
-                    .foregroundStyle(.secondary)
-                Spacer()
-                if bluetoothManager.isScanning {
-                    ProgressView().controlSize(.mini)
-                }
-            }
-            if bluetoothManager.discoveredPeripherals.isEmpty {
-                Text("Searching for devices…")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            } else {
-                ForEach(bluetoothManager.discoveredPeripherals) { item in
-                    targetRow(item)
-                }
-            }
-        }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 10)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.bar)
-    }
-
-    private func targetRow(_ item: PeripheralScanItem) -> some View {
-        HStack(spacing: 12) {
-            VStack(alignment: .leading, spacing: 1) {
-                Text(item.name ?? "Unknown Device")
-                    .font(.subheadline.weight(.medium))
-                Text("\(item.rssi) dBm")
-                    .font(.caption2.monospacedDigit())
-                    .foregroundStyle(.secondary)
-            }
-            Spacer(minLength: 8)
-            targetControl(for: item)
-        }
-    }
-
-    /// The trailing control for a discovered row — a pure function of the router's
-    /// connection state. Only the peripheral being connected is actionable; the
-    /// others are disabled (the router guards `beginConnect` to `.scanning`, so a
-    /// tap would no-op — disabling makes that truthful).
-    @ViewBuilder private func targetControl(for item: PeripheralScanItem) -> some View {
-        switch router.state {
-        case .scanning:
-            connectButton(item)
-
-        case let .connecting(id):
-            if id == item.id {
-                HStack(spacing: 8) {
-                    ProgressView().controlSize(.small)
-                    Button(role: .destructive) {
-                        router.cancelConnect()
-                    } label: {
-                        Label("Cancel", systemImage: "xmark.circle.fill")
-                    }
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
-                }
-            } else {
-                connectButton(item, disabled: true)
-            }
-
-        case let .connectFailed(id, message):
-            if id == item.id {
-                HStack(spacing: 8) {
-                    Image(systemName: "exclamationmark.triangle.fill")
-                        .foregroundStyle(.orange)
-                        .help(message)
-                    Button {
-                        router.retryConnect()
-                    } label: {
-                        Label("Retry", systemImage: "arrow.clockwise")
-                    }
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
-                    Button {
-                        router.dismissConnectError()
-                    } label: {
-                        Image(systemName: "xmark")
-                    }
-                    .buttonStyle(.borderless)
-                    .controlSize(.small)
-                    .accessibilityLabel("Dismiss error")
-                }
-            } else {
-                connectButton(item, disabled: true)
-            }
-
-        case .connected, .updatingFirmware:
-            EmptyView()
-        }
-    }
-
-    private func connectButton(_ item: PeripheralScanItem, disabled: Bool = false) -> some View {
-        Button {
-            router.beginConnect(peripheralID: item.id, name: item.name)
-        } label: {
-            Label("Connect", systemImage: "antenna.radiowaves.left.and.right")
-        }
-        .buttonStyle(.borderedProminent)
-        .controlSize(.small)
-        .disabled(disabled)
-        .accessibilityLabel("Connect to \(item.name ?? "device")")
-    }
-
-    /// Compact strip shown once connected: identity + link metric + the
-    /// device-output streaming toggle (same persisted flag as Settings, so it can
-    /// be flipped here without a trip to Settings).
-    private func connectedStrip(_ peer: ConnectedPeer) -> some View {
-        @Bindable var prefs = prefs
-        return HStack(spacing: 12) {
-            Image(systemName: "antenna.radiowaves.left.and.right")
-                .foregroundStyle(.green)
-            VStack(alignment: .leading, spacing: 1) {
-                Text("Connected — \(peer.name ?? "Sentinel")")
-                    .font(.subheadline.weight(.medium))
-                Text("MTU \(peer.negotiatedMTU)")
-                    .font(.caption2.monospacedDigit())
-                    .foregroundStyle(.secondary)
-            }
-            Spacer(minLength: 8)
-            Toggle(isOn: $prefs.debugModeEnabled) {
-                Text("Device output").font(.caption)
-            }
-            .toggleStyle(.switch)
-            .controlSize(.mini)
-            .fixedSize()
-            Button(role: .destructive) {
-                router.disconnect()
-            } label: {
-                Label("Disconnect", systemImage: "antenna.radiowaves.left.and.right.slash")
-            }
-            .buttonStyle(.bordered)
-            .controlSize(.small)
-            .labelStyle(.iconOnly)
-            .tint(.red)
-        }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 10)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.bar)
-    }
-
-    /// Stable id for the tail anchor row that auto-scroll targets.
-    private static let tailAnchor = "debug-stream-tail"
-}
-
-// MARK: - Row
-
-/// One log line: fixed-width timestamp, color-coded source glyph + severity, then
-/// the wrapping message. Monospaced so columns line up like a console.
-struct DebugLogLineRow: View {
-    let line: DebugLogLine
-
-    var body: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 8) {
-            Text(Self.timeFormatter.string(from: line.timestamp))
-                .foregroundStyle(.secondary)
-            Text(line.source.glyph)
-                .foregroundStyle(sourceColor)
-                .frame(width: 10)
-            Text(line.severity.label)
-                .foregroundStyle(severityColor)
-            Text(line.text)
-                .foregroundStyle(.primary)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .textSelection(.enabled)
-        }
-        .font(.caption.monospaced())
-        .accessibilityElement(children: .combine)
-    }
-
-    private var sourceColor: Color {
-        switch line.source {
-        case .local: .blue
-        case .device: .green
-        }
-    }
-
-    private var severityColor: Color {
-        switch line.severity {
-        case .info: .secondary
-        case .warn: .orange
-        case .error: .red
-        }
-    }
-
-    /// `HH:mm:ss.SSS` in local time — cached; `Date.FormatStyle` has no
-    /// milliseconds component.
-    private static let timeFormatter: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "HH:mm:ss.SSS"
-        return formatter
-    }()
-}
-
-// MARK: - Filter sheet
-
-/// Source + severity controls for the debug stream. The plain-text search lives in
-/// the navigation `.searchable` bar; this sheet holds the toggles that don't fit a
-/// search field.
-struct DebugLogFilterSheet: View {
-    @Binding var filter: DebugLogFilter
-    @Environment(\.dismiss) private var dismiss
-
-    var body: some View {
-        NavigationStack {
-            Form {
-                Section("Sources") {
-                    Toggle("Local BLE events", isOn: $filter.showLocal)
-                    Toggle("Device debug output", isOn: $filter.showDevice)
-                }
-                Section("Severity") {
-                    Picker("Minimum severity", selection: $filter.minimumSeverity) {
-                        Text("Info").tag(DebugLogLine.Severity.info)
-                        Text("Warnings").tag(DebugLogLine.Severity.warn)
-                        Text("Errors").tag(DebugLogLine.Severity.error)
-                    }
-                    .pickerStyle(.segmented)
-                }
-                Section {
-                    Button("Reset Filters") { filter = DebugLogFilter() }
-                        .disabled(!filter.isActive)
-                }
-            }
-            .navigationTitle("Filter")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Done") { dismiss() }
-                }
-            }
-        }
-        .presentationDetents([.medium])
-    }
+    /// Stable id for the latest-edge anchor row.
+    static let latestAnchor = "debug-stream-latest"
 }
 
 // MARK: - Previews

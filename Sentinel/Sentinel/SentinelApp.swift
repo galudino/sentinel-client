@@ -19,6 +19,7 @@ struct SentinelApp: App {
     @State private var pairedPeerStore: PairedPeerStore
     @State private var appPreferences: AppPreferences
     @State private var importedFirmwareStore: ImportedFirmwareStore
+    @State private var debugLogStore: DebugLogStore
 
     /// Whether the launch splash (#26) has finished. Once true, the scene swaps
     /// `SplashView` for `RootView` (the AppRouter-driven state machine, #7).
@@ -30,6 +31,7 @@ struct SentinelApp: App {
         pairedPeerStore = PairedPeerStore()
         appPreferences = AppPreferences()
         importedFirmwareStore = ImportedFirmwareStore()
+        debugLogStore = DebugLogStore()
 
         // `AppRouter` depends on the manager, so build it once the independent
         // object exists.
@@ -46,6 +48,7 @@ struct SentinelApp: App {
                         .environment(pairedPeerStore)
                         .environment(appPreferences)
                         .environment(importedFirmwareStore)
+                        .environment(debugLogStore)
                 } else {
                     SplashView(onComplete: { hasSplashed = true })
                 }

@@ -14,8 +14,8 @@ import Foundation
 /// merges this local stream with the on-device ``DebugStreamService`` output into
 /// one timeline. Kept deliberately small for Phase I — a category, a message, and
 /// the peer it concerns.
-struct BluetoothLogEvent: Identifiable, Hashable, Sendable {
-    enum Category: String, Sendable {
+nonisolated struct BluetoothLogEvent: Identifiable, Hashable, Sendable {
+    nonisolated enum Category: String, Sendable {
         case scan
         case connection
         case discovery

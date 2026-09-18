@@ -13,7 +13,10 @@ import Foundation
 /// streaming is enabled. Mirrors firmware `sentinel_gatt_debug.hpp`.
 /// `DebugOutputStreamView` (#25) merges this with the local
 /// ``BluetoothManager/bluetoothEventStream()`` into one timeline.
-protocol DebugStreamService {
+/// `Sendable` so `DebugOutputStreamView` (#25) can hand the service to a detached
+/// teardown task that disarms the stream even after its consuming `.task` was
+/// cancelled on disappear. Both conformers are value/`@unchecked Sendable`-backed.
+protocol DebugStreamService: Sendable {
     /// Turn the device's debug output stream on or off.
     func setStreaming(_ enabled: Bool) async throws
     /// UTF-8 log lines pushed by the device while streaming is on.

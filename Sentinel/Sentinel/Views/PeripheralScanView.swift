@@ -12,15 +12,17 @@ import SwiftUI
 /// with signal + last-seen, and connects the one the user taps (driving the router
 /// to `.connecting`).
 ///
-/// The toolbar **Debug** button pushes `DebugOutputStreamView` (#25) so the BLE
-/// handshake is watchable live from the entry screen (pre-connection, so it shows
-/// local events only — there is no device stream yet). Still deferred to its owning
-/// issue: the **Trusted devices** section (needs the paired-peer registry, #23).
+/// The toolbar **Debug** button raises the floating debug console (#25) so the BLE
+/// handshake is watchable live from the entry screen — and a connect can be started
+/// from inside it (the console floats at `RootView`, so it survives the connect
+/// transition). Still deferred to its owning issue: the **Trusted devices** section
+/// (needs the paired-peer registry, #23).
 /// Everything else — live scan list, RSSI, staleness fade, empty state,
 /// Bluetooth-unavailable/permission path, connect-on-tap — is here.
 struct PeripheralScanView: View {
     @Environment(AppRouter.self) private var router
     @Environment(BluetoothManager.self) private var bluetoothManager
+    @Environment(DebugLogStore.self) private var debugLog
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.openURL) private var openURL
 
@@ -69,11 +71,8 @@ struct PeripheralScanView: View {
                 .disabled(unavailable != nil)
             }
             ToolbarItem(placement: .topBarTrailing) {
-                NavigationLink {
-                    DebugOutputStreamView(
-                        localEvents: { bluetoothManager.bluetoothEventStream() },
-                        deviceStream: nil
-                    )
+                Button {
+                    debugLog.isConsolePresented = true
                 } label: {
                     Label("Debug", systemImage: "ladybug")
                 }
@@ -235,6 +234,7 @@ enum BluetoothUnavailableReason {
         }
         .environment(AppRouter(bluetoothManager: manager))
         .environment(manager)
+        .environment(DebugLogStore.preview())
     }
 
     // The real simulator behavior — no BLE hardware.

@@ -27,7 +27,7 @@ struct DeviceView: View {
     let firmwareUpdateAvailable: Bool
 
     @Environment(AppRouter.self) private var router
-    @Environment(BluetoothManager.self) private var bluetoothManager
+    @Environment(DebugLogStore.self) private var debugLog
     @Environment(\.horizontalSizeClass) private var hSize
 
     @State private var firmwareVersion: FirmwareVersion?
@@ -59,7 +59,12 @@ struct DeviceView: View {
         List(selection: $selection) {
             Section {
                 ForEach(DeviceCategory.phaseIRows) { row in
-                    rowLabel(for: row).tag(row)
+                    if row == .debugStream {
+                        Button { debugLog.isConsolePresented = true } label: { rowLabel(for: row) }
+                            .buttonStyle(.plain)
+                    } else {
+                        rowLabel(for: row).tag(row)
+                    }
                 }
             }
             phaseIISection
@@ -74,7 +79,12 @@ struct DeviceView: View {
         List {
             Section {
                 ForEach(DeviceCategory.phaseIRows) { row in
-                    NavigationLink(value: row) { rowLabel(for: row) }
+                    if row == .debugStream {
+                        Button { debugLog.isConsolePresented = true } label: { rowLabel(for: row) }
+                            .buttonStyle(.plain)
+                    } else {
+                        NavigationLink(value: row) { rowLabel(for: row) }
+                    }
                 }
             }
             phaseIISection
@@ -145,12 +155,20 @@ struct DeviceView: View {
         case .storage:
             StorageView(eventLog: peer.systemEventLog, snapshots: peer.snapshotHistory)
         case .debugStream:
-            // Merged local BLE events + the device's own debug output (#25). Here
-            // the peer is live, so the device stream is present.
-            DebugOutputStreamView(
-                localEvents: { bluetoothManager.bluetoothEventStream() },
-                deviceStream: peer.debugStream
-            )
+            // The debug console (#25) is a floating sheet raised from the row, not a
+            // pushed detail — so it survives connect/disconnect transitions and can
+            // be reached identically from the scan screen. This detail is only a
+            // fallback if the split-view selection ever lands here.
+            ContentUnavailableView {
+                Label("Debug Output", systemImage: "text.alignleft")
+            } description: {
+                Text("Open the live debug console.")
+            } actions: {
+                Button("Open Debug Console") { debugLog.isConsolePresented = true }
+                    .buttonStyle(.borderedProminent)
+            }
+            .navigationTitle("Debug Output")
+            .navigationBarTitleDisplayMode(.inline)
         case .gattExplorer:
             GATTExplorerView(transport: peer)
         case .bme280Config, .ds3231Config, .none:
@@ -173,7 +191,7 @@ struct DeviceView: View {
             firmwareUpdateAvailable: false
         )
         .environment(AppRouter(bluetoothManager: BluetoothManager()))
-        .environment(BluetoothManager())
+        .environment(DebugLogStore.preview())
         .environment(ImportedFirmwareStore())
     }
 
@@ -184,7 +202,7 @@ struct DeviceView: View {
             firmwareUpdateAvailable: true
         )
         .environment(AppRouter(bluetoothManager: BluetoothManager()))
-        .environment(BluetoothManager())
+        .environment(DebugLogStore.preview())
         .environment(ImportedFirmwareStore())
     }
 #endif

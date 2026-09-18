@@ -27,9 +27,13 @@ import SwiftUI
 struct RootView: View {
     @Environment(AppRouter.self) private var router
     @Environment(PairedPeerStore.self) private var pairedPeerStore
+    @Environment(BluetoothManager.self) private var bluetoothManager
+    @Environment(DebugLogStore.self) private var debugLog
+    @Environment(AppPreferences.self) private var preferences
 
     var body: some View {
-        ZStack {
+        @Bindable var debugLog = debugLog
+        return ZStack {
             switch router.state {
             case .scanning:
                 NavigationStack {
@@ -50,6 +54,13 @@ struct RootView: View {
                     .task(id: peer.id) {
                         pairedPeerStore.register(id: peer.id, name: peer.name)
                     }
+                    // Collect device debug output into the app-wide store for the
+                    // whole connection (#25) — so it persists across console
+                    // instances. Keyed on the Debug-streaming flag too, so toggling
+                    // it arms/disarms the device stream live.
+                    .task(id: "\(peer.id)|\(preferences.debugModeEnabled)") {
+                        await collectDeviceOutput(peer)
+                    }
 
             case let .updatingFirmware(peer, image):
                 FirmwareUpdateView(peer: peer, image: image)
@@ -58,6 +69,37 @@ struct RootView: View {
             }
         }
         .animation(.smooth(duration: 0.3), value: router.state)
+        // Local BLE events flow into the store for the whole app run, so the debug
+        // console shows the full handshake even when opened after the fact (#25).
+        .task { await collectLocalEvents() }
+        // The debug console floats here at the root — above whatever screen is
+        // active — so it survives scanning → connecting → connected and a connect
+        // can be started (and cancelled) from inside it.
+        .sheet(isPresented: $debugLog.isConsolePresented) {
+            DebugOutputStreamView()
+        }
+    }
+
+    /// Consume local BLE lifecycle events for the app's lifetime, appending each to
+    /// the shared ``DebugLogStore``.
+    private func collectLocalEvents() async {
+        for await event in bluetoothManager.bluetoothEventStream() {
+            debugLog.append(.from(event))
+        }
+    }
+
+    /// While connected and Debug streaming is enabled, arm the device debug stream,
+    /// pipe its lines into the store, and disarm on teardown (on a detached task so
+    /// a cancelled `.task` — disconnect or flag flip — still stops the device from
+    /// transmitting).
+    private func collectDeviceOutput(_ peer: ConnectedPeer) async {
+        guard preferences.debugModeEnabled else { return }
+        let service = peer.debugStream
+        try? await service.setStreaming(true)
+        defer { Task.detached { try? await service.setStreaming(false) } }
+        for await raw in service.outputNotifications() {
+            debugLog.append(.fromDevice(raw))
+        }
     }
 }
 
@@ -77,6 +119,7 @@ struct RootView: View {
             .environment(AppPreferences())
             .environment(PairedPeerStore.preview(peers: []))
             .environment(ImportedFirmwareStore())
+            .environment(DebugLogStore.preview())
     }
 
     /// Straight into the connected tabs — a populated `MainTabView` reached through
@@ -89,6 +132,7 @@ struct RootView: View {
             .environment(AppPreferences())
             .environment(PairedPeerStore.preview(peers: []))
             .environment(ImportedFirmwareStore())
+            .environment(DebugLogStore.preview())
             .task { router.beginConnect(peripheralID: UUID(), name: "Sentinel") }
     }
 #endif

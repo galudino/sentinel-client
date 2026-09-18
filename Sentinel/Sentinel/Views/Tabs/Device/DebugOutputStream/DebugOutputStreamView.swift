@@ -9,33 +9,29 @@ import SwiftUI
 
 // MARK: - DebugOutputStreamView
 
-/// A live, scrollable log viewer (#25) that merges two BLE-adjacent sources into
-/// one chronological feed:
+/// The floating **debug console** (#25): a live, scrollable log viewer over a
+/// pinned connect header.
 ///
-/// 1. **Local BLE events** — `BluetoothManager.bluetoothEventStream()`
-///    (`AsyncStream<BluetoothLogEvent>`). Always available, even pre-connection,
-///    so the scan → connect → discovery handshake is watchable live.
-/// 2. **Device-side debug output** — the firmware's ``DebugStreamService``
-///    (`nil` before a connection exists). Armed on appear, disarmed on disappear.
+/// It renders the app-wide ``DebugLogStore`` — so the timeline **persists across
+/// view instances** and already holds the scan → connect → discovery handshake
+/// that happened before the console was opened. `RootView` feeds the store (local
+/// BLE events for the app's lifetime; device debug output while connected), and
+/// presents this view as a `.sheet` bound to ``DebugLogStore/isConsolePresented``,
+/// so the console floats above the root and survives the
+/// scanning → connecting → connected transitions.
 ///
-/// Reached from two entry points that push the same view onto a `NavigationStack`:
-/// the **PeripheralScanView** toolbar (pre-connection, `deviceStream == nil`) and
-/// the **DeviceView** "Debug Output" row (post-connection, with a live stream).
-///
-/// This is a **leaf view**: it takes its two sources as inputs (a local-stream
-/// *provider* closure + an optional `any DebugStreamService`) rather than reaching
-/// into the environment, so a Preview renders synthetic lines with no BLE — the
-/// injected streams are the preview seam, mirroring `HomeView`'s convention.
+/// The **pinned header** lists discovered peripherals with a per-row Connect /
+/// Cancel / Retry control driven entirely by ``AppRouter/state`` — so you can
+/// start (and cancel) a connection from inside the console and watch the handshake
+/// stream live, without the control ever scrolling out of reach. Once connected it
+/// collapses to a compact strip with the device-output streaming toggle.
 struct DebugOutputStreamView: View {
-    /// Produces a fresh subscription to the local BLE event stream. A closure (not
-    /// a stored `AsyncStream`) because each `bluetoothEventStream()` call vends an
-    /// independent subscriber, created when this view appears.
-    let localEvents: () -> AsyncStream<BluetoothLogEvent>
-    /// The device-side debug stream, or `nil` when reached before a connection.
-    let deviceStream: (any DebugStreamService)?
+    @Environment(DebugLogStore.self) private var store
+    @Environment(AppRouter.self) private var router
+    @Environment(BluetoothManager.self) private var bluetoothManager
+    @Environment(AppPreferences.self) private var prefs
+    @Environment(\.dismiss) private var dismiss
 
-    /// The merged, bounded line buffer (oldest → newest).
-    @State private var lines: [DebugLogLine] = []
     /// When paused, the buffer keeps growing but the view stops auto-scrolling to
     /// the tail — so the user can read back without new lines yanking the viewport.
     @State private var paused = false
@@ -43,20 +39,39 @@ struct DebugOutputStreamView: View {
     @State private var showFilter = false
     @State private var showClearConfirmation = false
 
-    /// Upper bound on retained lines; the oldest are dropped past this. Matches the
-    /// issue's Phase I budget.
-    private let maxLines = 10000
-
-    /// How far back an out-of-order line may be inserted by timestamp. Both sources
-    /// stamp on arrival so lines are near-monotonic; this bounds the reordering
-    /// work when the two interleave, without a timer (the issue's "small reordering
-    /// window", expressed as a count).
-    private let reorderWindow = 64
-
     var body: some View {
-        let visible = filter.apply(to: lines)
+        NavigationStack {
+            VStack(spacing: 0) {
+                connectHeader
+                Divider()
+                logList
+            }
+            .navigationTitle("Debug Stream")
+            .navigationBarTitleDisplayMode(.inline)
+            .searchable(text: $filter.searchText, prompt: "Filter messages")
+            .toolbar { toolbarContent }
+            .confirmationDialog(
+                "Clear current log?",
+                isPresented: $showClearConfirmation,
+                titleVisibility: .visible
+            ) {
+                Button("Clear", role: .destructive) { store.clear() }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("This empties the on-screen buffer. New activity keeps appending.")
+            }
+            .sheet(isPresented: $showFilter) {
+                DebugLogFilterSheet(filter: $filter)
+            }
+        }
+    }
 
-        ScrollViewReader { proxy in
+    // MARK: - Log feed
+
+    private var logList: some View {
+        let visible = filter.apply(to: store.lines)
+
+        return ScrollViewReader { proxy in
             List {
                 ForEach(visible) { line in
                     DebugLogLineRow(line: line)
@@ -64,7 +79,7 @@ struct DebugOutputStreamView: View {
                         .listRowInsets(EdgeInsets(top: 2, leading: 12, bottom: 2, trailing: 12))
                         .id(line.id)
                 }
-                // A zero-height tail anchor so auto-scroll always has a target even
+                // Zero-height tail anchor so auto-scroll always has a target even
                 // when the last row is tall/wrapped.
                 Color.clear
                     .frame(height: 1)
@@ -79,34 +94,31 @@ struct DebugOutputStreamView: View {
                     proxy.scrollTo(Self.tailAnchor, anchor: .bottom)
                 }
             }
+            .task {
+                // Land at the tail when the console opens onto existing history.
+                proxy.scrollTo(Self.tailAnchor, anchor: .bottom)
+            }
         }
-        .navigationTitle("Debug Stream")
-        .navigationBarTitleDisplayMode(.inline)
-        .searchable(text: $filter.searchText, prompt: "Filter messages")
-        .toolbar { toolbarContent }
-        .confirmationDialog(
-            "Clear current log?",
-            isPresented: $showClearConfirmation,
-            titleVisibility: .visible
-        ) {
-            Button("Clear", role: .destructive) { lines.removeAll() }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("This empties the on-screen buffer. New activity keeps appending.")
+    }
+
+    private var emptyState: some View {
+        ContentUnavailableView {
+            Label(store.lines.isEmpty ? "No Debug Output Yet" : "No Matching Lines", systemImage: "text.alignleft")
+        } description: {
+            Text(
+                store.lines.isEmpty
+                    ? "BLE activity and device debug lines appear here as they happen."
+                    : "No lines match the current filter."
+            )
         }
-        .sheet(isPresented: $showFilter) {
-            DebugLogFilterSheet(filter: $filter)
-        }
-        // Two lifetime tasks, mirroring HomeView's per-source `.task`s: both run on
-        // the view's MainActor context, so appends from either source are
-        // serialized (no data race) and the reordering insert handles interleaving.
-        .task { await consumeLocal() }
-        .task { await consumeDevice() }
     }
 
     // MARK: - Toolbar
 
     @ToolbarContentBuilder private var toolbarContent: some ToolbarContent {
+        ToolbarItem(placement: .topBarLeading) {
+            Button("Done") { dismiss() }
+        }
         ToolbarItemGroup(placement: .topBarTrailing) {
             Button {
                 showFilter = true
@@ -118,74 +130,169 @@ struct DebugOutputStreamView: View {
                         : "line.3.horizontal.decrease.circle"
                 )
             }
-
             Button {
                 paused.toggle()
             } label: {
                 Label(paused ? "Resume" : "Pause", systemImage: paused ? "play.fill" : "pause.fill")
             }
-
             Button(role: .destructive) {
                 showClearConfirmation = true
             } label: {
                 Label("Clear", systemImage: "trash")
             }
-            .disabled(lines.isEmpty)
+            .disabled(store.lines.isEmpty)
         }
     }
 
-    private var emptyState: some View {
-        ContentUnavailableView {
-            Label(lines.isEmpty ? "No Debug Output Yet" : "No Matching Lines", systemImage: "text.alignleft")
-        } description: {
-            Text(
-                lines.isEmpty
-                    ? "BLE activity and device debug lines appear here as they happen."
-                    : "No lines match the current filter."
-            )
+    // MARK: - Pinned connect header
+
+    @ViewBuilder private var connectHeader: some View {
+        switch router.state {
+        case let .connected(peer), let .updatingFirmware(peer, _):
+            connectedStrip(peer)
+        default:
+            discoveredTargets
         }
     }
 
-    // MARK: - Source consumers
-
-    /// Subscribe to the local BLE event stream for the view's lifetime. Cancelled
-    /// on disappear (the `for await` ends when the `.task` is cancelled).
-    private func consumeLocal() async {
-        for await event in localEvents() {
-            append(.from(event))
-        }
-    }
-
-    /// Arm the device debug stream (if connected), consume it for the view's
-    /// lifetime, and disarm on teardown. The disarm runs on a **detached** task so
-    /// a parent `.task` cancelled on disappear doesn't abort the teardown writes —
-    /// leaving the device to keep transmitting debug lines over the air.
-    private func consumeDevice() async {
-        guard let deviceStream else { return }
-        try? await deviceStream.setStreaming(true)
-        for await raw in deviceStream.outputNotifications() {
-            append(.fromDevice(raw))
-        }
-        Task.detached { try? await deviceStream.setStreaming(false) }
-    }
-
-    /// Append a line, keeping the buffer roughly timestamp-ordered and bounded.
-    /// A line older than the tail is inserted back among the last ``reorderWindow``
-    /// entries; beyond that window it is appended as-is (bounded work, no reindex).
-    private func append(_ line: DebugLogLine) {
-        if let last = lines.last, line.timestamp < last.timestamp {
-            let floor = max(0, lines.count - reorderWindow)
-            var index = lines.count
-            while index > floor, lines[index - 1].timestamp > line.timestamp {
-                index -= 1
+    /// Discovered peripherals with per-row Connect / Cancel / Retry. Pinned above
+    /// the (scrolling) log so the control is always reachable while lines stream.
+    private var discoveredTargets: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Label("Discovered", systemImage: "dot.radiowaves.left.and.right")
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                Spacer()
+                if bluetoothManager.isScanning {
+                    ProgressView().controlSize(.mini)
+                }
             }
-            lines.insert(line, at: index)
-        } else {
-            lines.append(line)
+            if bluetoothManager.discoveredPeripherals.isEmpty {
+                Text("Searching for devices…")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } else {
+                ForEach(bluetoothManager.discoveredPeripherals) { item in
+                    targetRow(item)
+                }
+            }
         }
-        if lines.count > maxLines {
-            lines.removeFirst(lines.count - maxLines)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(.bar)
+    }
+
+    private func targetRow(_ item: PeripheralScanItem) -> some View {
+        HStack(spacing: 12) {
+            VStack(alignment: .leading, spacing: 1) {
+                Text(item.name ?? "Unknown Device")
+                    .font(.subheadline.weight(.medium))
+                Text("\(item.rssi) dBm")
+                    .font(.caption2.monospacedDigit())
+                    .foregroundStyle(.secondary)
+            }
+            Spacer(minLength: 8)
+            targetControl(for: item)
         }
+    }
+
+    /// The trailing control for a discovered row — a pure function of the router's
+    /// connection state. Only the peripheral being connected is actionable; the
+    /// others are disabled (the router guards `beginConnect` to `.scanning`, so a
+    /// tap would no-op — disabling makes that truthful).
+    @ViewBuilder private func targetControl(for item: PeripheralScanItem) -> some View {
+        switch router.state {
+        case .scanning:
+            connectButton(item)
+
+        case let .connecting(id):
+            if id == item.id {
+                HStack(spacing: 8) {
+                    ProgressView().controlSize(.small)
+                    Button(role: .destructive) {
+                        router.cancelConnect()
+                    } label: {
+                        Label("Cancel", systemImage: "xmark.circle.fill")
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                }
+            } else {
+                connectButton(item, disabled: true)
+            }
+
+        case let .connectFailed(id, message):
+            if id == item.id {
+                HStack(spacing: 8) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .foregroundStyle(.orange)
+                        .help(message)
+                    Button {
+                        router.retryConnect()
+                    } label: {
+                        Label("Retry", systemImage: "arrow.clockwise")
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    Button {
+                        router.dismissConnectError()
+                    } label: {
+                        Image(systemName: "xmark")
+                    }
+                    .buttonStyle(.borderless)
+                    .controlSize(.small)
+                    .accessibilityLabel("Dismiss error")
+                }
+            } else {
+                connectButton(item, disabled: true)
+            }
+
+        case .connected, .updatingFirmware:
+            EmptyView()
+        }
+    }
+
+    private func connectButton(_ item: PeripheralScanItem, disabled: Bool = false) -> some View {
+        Button {
+            router.beginConnect(peripheralID: item.id, name: item.name)
+        } label: {
+            Label("Connect", systemImage: "antenna.radiowaves.left.and.right")
+        }
+        .buttonStyle(.borderedProminent)
+        .controlSize(.small)
+        .disabled(disabled)
+        .accessibilityLabel("Connect to \(item.name ?? "device")")
+    }
+
+    /// Compact strip shown once connected: identity + link metric + the
+    /// device-output streaming toggle (same persisted flag as Settings, so it can
+    /// be flipped here without a trip to Settings).
+    private func connectedStrip(_ peer: ConnectedPeer) -> some View {
+        @Bindable var prefs = prefs
+        return HStack(spacing: 12) {
+            Image(systemName: "antenna.radiowaves.left.and.right")
+                .foregroundStyle(.green)
+            VStack(alignment: .leading, spacing: 1) {
+                Text("Connected — \(peer.name ?? "Sentinel")")
+                    .font(.subheadline.weight(.medium))
+                Text("MTU \(peer.negotiatedMTU)")
+                    .font(.caption2.monospacedDigit())
+                    .foregroundStyle(.secondary)
+            }
+            Spacer(minLength: 8)
+            Toggle(isOn: $prefs.debugModeEnabled) {
+                Text("Device output").font(.caption)
+            }
+            .toggleStyle(.switch)
+            .controlSize(.mini)
+            .fixedSize()
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(.bar)
     }
 
     /// Stable id for the tail anchor row that auto-scroll targets.
@@ -285,61 +392,35 @@ struct DebugLogFilterSheet: View {
 // MARK: - Previews
 
 #if DEBUG
-    /// A synthetic local event stream that replays a scan → connect → discovery
-    /// handshake, then drips a couple of live events, so the Preview shows the feed
-    /// filling and auto-scrolling with no BLE hardware.
-    private func previewLocalEvents() -> AsyncStream<BluetoothLogEvent> {
-        AsyncStream { continuation in
-            let scripted: [BluetoothLogEvent] = [
-                .init(category: .scan, message: "Scan started"),
-                .init(category: .scan, message: "Discovered Sentinel"),
-                .init(category: .connection, message: "Connecting to Sentinel"),
-                .init(category: .discovery, message: "Discovering services"),
-                .init(category: .connection, message: "Connected (MTU 247)"),
-                .init(category: .error, message: "RSSI read failed (transient)")
-            ]
-            Task {
-                for event in scripted {
-                    continuation.yield(event)
-                    try? await Task.sleep(for: .milliseconds(180))
-                }
-                continuation.finish()
-            }
-        }
-    }
-
-    /// Connected: local handshake interleaved with device-side debug lines,
-    /// including parsed `[WARN]` / `[ERROR]` markers.
+    /// Connected: merged local + device timeline, device-output toggle on.
     #Preview("Connected — merged feed") {
-        NavigationStack {
-            DebugOutputStreamView(
-                localEvents: previewLocalEvents,
-                deviceStream: MockDebugStreamService(lines: [
-                    "[boot] sentinel up",
-                    "POST: pass",
-                    "RTC synced via SQW (P6_3)",
-                    "bme280 sample: T=22.05 H=48.2 P=1013.0",
-                    "[WARN] snapshot store 80% full",
-                    "[ERROR] i2c timeout on retry 2"
-                ])
-            )
-        }
+        @Previewable @State var router = AppRouter(bluetoothManager: PreviewBluetoothCentral(connectDelay: .zero))
+        DebugOutputStreamView()
+            .environment(DebugLogStore.preview())
+            .environment(router)
+            .environment(BluetoothManager.preview(discovered: []))
+            .environment(AppPreferences())
+            .task { router.beginConnect(peripheralID: UUID(), name: "Sentinel") }
     }
 
-    /// Pre-connection (from the scan screen): local events only, no device stream.
-    #Preview("Pre-connection — local only") {
-        NavigationStack {
-            DebugOutputStreamView(localEvents: previewLocalEvents, deviceStream: nil)
-        }
+    /// Pre-connection: discovered peripherals with Connect buttons + local history.
+    #Preview("Scanning — connect targets") {
+        DebugOutputStreamView()
+            .environment(DebugLogStore.preview(lines: Array(DebugLogLine.previewTimeline().prefix(2))))
+            .environment(AppRouter(bluetoothManager: PreviewBluetoothCentral()))
+            .environment(BluetoothManager.preview(discovered: [
+                PeripheralScanItem(previewName: "Sentinel", rssi: -47, lastUpdated: .now.addingTimeInterval(-1)),
+                PeripheralScanItem(previewName: "Sentinel-2F1A", rssi: -66, lastUpdated: .now.addingTimeInterval(-4))
+            ]))
+            .environment(AppPreferences())
     }
 
     /// Empty: no activity yet — the `ContentUnavailableView` state.
     #Preview("Empty") {
-        NavigationStack {
-            DebugOutputStreamView(
-                localEvents: { AsyncStream { $0.finish() } },
-                deviceStream: nil
-            )
-        }
+        DebugOutputStreamView()
+            .environment(DebugLogStore())
+            .environment(AppRouter(bluetoothManager: PreviewBluetoothCentral()))
+            .environment(BluetoothManager.preview(discovered: []))
+            .environment(AppPreferences())
     }
 #endif

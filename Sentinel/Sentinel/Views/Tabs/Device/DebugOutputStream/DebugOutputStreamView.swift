@@ -152,9 +152,19 @@ struct DebugOutputStreamView: View {
             .onChange(of: autoScroll) { _, enabled in
                 if enabled { scrollToLatest(); newCount = 0 }
             }
-            .onChange(of: sortNewestFirst) { _, _ in
-                scrollToLatest()
+            .onChange(of: sortNewestFirst) { _, newestFirst in
                 newCount = 0
+                // A sort flip reorders every row. Defer the scroll to the next tick
+                // and disable its animation, so scrollToLatest's animation
+                // transaction doesn't wrap (and animate) the whole reorder — that
+                // coupling pins the main thread on a large buffer (the "hang").
+                Task { @MainActor in
+                    var transaction = Transaction()
+                    transaction.disablesAnimations = true
+                    withTransaction(transaction) {
+                        proxy.scrollTo(Self.latestAnchor, anchor: newestFirst ? .top : .bottom)
+                    }
+                }
             }
             .task {
                 // Land on the latest edge when the console opens onto existing history.

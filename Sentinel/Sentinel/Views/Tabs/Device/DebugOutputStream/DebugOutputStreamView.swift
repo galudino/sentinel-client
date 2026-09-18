@@ -221,12 +221,14 @@ struct DebugOutputStreamView: View {
             Button {
                 autoScroll.toggle()
             } label: {
-                Label(
-                    autoScroll ? "Following latest" : "Auto-scroll off",
-                    systemImage: autoScroll ? "pin.fill" : "pin.slash"
-                )
+                // Direction-aware: the arrow points toward the latest edge (which
+                // flips with sort order); fill + tint carry the on/off state.
+                Label("Follow new entries", systemImage: sortNewestFirst ? "arrow.up.to.line" : "arrow.down.to.line")
+                    .symbolVariant(autoScroll ? .fill : .none)
             }
             .tint(autoScroll ? .accentColor : .secondary)
+            .accessibilityValue(autoScroll ? "On" : "Off")
+            .help(autoScroll ? "Stop following new entries" : "Follow new entries to the latest")
             Button(role: .destructive) {
                 showClearConfirmation = true
             } label: {

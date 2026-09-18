@@ -13,16 +13,20 @@ import SwiftUI
 /// the wrapping message. Monospaced so columns line up like a console.
 struct DebugLogLineRow: View {
     let line: DebugLogLine
+    /// Whether to show the leading client **receive time**. Governs device lines
+    /// only — a local BLE event's *only* timestamp is its client time, so it always
+    /// shows.
+    var showReceiveTime = true
 
     var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: 8) {
-            Text(Self.timeFormatter.string(from: line.timestamp))
-                .foregroundStyle(.secondary)
+            if line.source == .local || showReceiveTime {
+                Text(Self.timeFormatter.string(from: line.timestamp))
+                    .foregroundStyle(.secondary)
+            }
             Text(line.source.glyph)
                 .foregroundStyle(sourceColor)
                 .frame(width: 10)
-            Text(line.severity.label)
-                .foregroundStyle(severityColor)
             Text(line.text)
                 .foregroundStyle(.primary)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -56,13 +60,16 @@ struct DebugLogLineRow: View {
     }()
 }
 
-// MARK: - Filter sheet
+// MARK: - Options sheet
 
-/// Sort, source, severity, and per-service controls. The plain-text search lives
-/// in the navigation `.searchable` bar; this sheet holds everything else.
-struct DebugLogFilterSheet: View {
+/// The debug console's options: sort order, display options, source / severity /
+/// per-service filters. The plain-text search lives in the navigation
+/// `.searchable` bar; this sheet holds everything else. (Per-field display + a
+/// richer columnar renderer are tracked separately for Phase I.)
+struct DebugConsoleOptionsSheet: View {
     @Binding var filter: DebugLogFilter
     @Binding var sortNewestFirst: Bool
+    @Binding var showReceiveTime: Bool
     let services: [String]
 
     @Environment(\.dismiss) private var dismiss
@@ -76,6 +83,15 @@ struct DebugLogFilterSheet: View {
                         Text("Newest first").tag(true)
                     }
                     .pickerStyle(.segmented)
+                }
+                Section {
+                    Toggle("Receive time", isOn: $showReceiveTime)
+                } header: {
+                    Text("Display")
+                } footer: {
+                    Text(
+                        "Show the time the client received each device entry. Local BLE events always show their time."
+                    )
                 }
                 Section("Sources") {
                     Toggle("Local BLE events", isOn: $filter.showLocal)
@@ -98,7 +114,7 @@ struct DebugLogFilterSheet: View {
                         .disabled(!filter.isActive)
                 }
             }
-            .navigationTitle("Filter & Sort")
+            .navigationTitle("Options")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {

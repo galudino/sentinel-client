@@ -41,6 +41,8 @@ struct DebugOutputStreamView: View {
     /// off, arrivals never move the viewport — the "N new" banner is the only way
     /// to jump. Toggled from the toolbar.
     @AppStorage("v1.debugConsole.autoScroll") private var autoScroll = true
+    /// Show the client receive time on device rows (display option).
+    @AppStorage("v1.debugConsole.showReceiveTime") private var showReceiveTime = true
 
     @State private var showFilter = false
     @State private var showClearConfirmation = false
@@ -83,9 +85,10 @@ struct DebugOutputStreamView: View {
                 Text("This empties the on-screen buffer. New activity keeps appending.")
             }
             .sheet(isPresented: $showFilter) {
-                DebugLogFilterSheet(
+                DebugConsoleOptionsSheet(
                     filter: $filter,
                     sortNewestFirst: $sortNewestFirst,
+                    showReceiveTime: $showReceiveTime,
                     services: discoveredServices
                 )
             }
@@ -118,7 +121,7 @@ struct DebugOutputStreamView: View {
                 List {
                     if sortNewestFirst { latestAnchorRow }
                     ForEach(visible) { line in
-                        DebugLogLineRow(line: line)
+                        DebugLogLineRow(line: line, showReceiveTime: showReceiveTime)
                             .listRowSeparator(.hidden)
                             .listRowInsets(EdgeInsets(top: 2, leading: 12, bottom: 2, trailing: 12))
                             .id(line.id)
@@ -221,8 +224,9 @@ struct DebugOutputStreamView: View {
             Button {
                 showFilter = true
             } label: {
+                // Funnel doubles as an active-filter indicator (filled when filtering).
                 Label(
-                    "Filter",
+                    "Options",
                     systemImage: filter.isActive
                         ? "line.3.horizontal.decrease.circle.fill"
                         : "line.3.horizontal.decrease.circle"

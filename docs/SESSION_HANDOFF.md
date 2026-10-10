@@ -68,6 +68,11 @@ across notifications) · **#35/#36** (SwiftLint/DocC + per-dir READMEs).
 1.0.2 is still open** (constituents #74/#75/#71/#68 not started; #79 committed,
 needs on-device validation) — see the firmware `SESSION_HANDOFF.md`.
 
+**Next session — start with #47** (debug pretty rows; design done, no firmware
+dep), then **#44** (list sort/filter), **#46** (unsolicited disconnect), **#43**
+(auto-refresh — **do after firmware #75** lands, since it consumes the count-change
+notify).
+
 ---
 
 ### Historical: #17 subsystem detail (retained for reference)

@@ -20,8 +20,17 @@ the architecture docs rather than letting them accumulate here.
 
 ---
 
-**Last updated:** 2026-09-15 (session 8). Both prior features are now merged +
-on-device-validated:
+**Last updated:** 2026-10-10. **#25 DebugOutputStreamView — DONE + MERGED** (squash
+`6d4acdb` on `develop` → `main` `bd0a1b0`; pre-squash history tag
+`25-debug-output-stream-view-history`; branch deleted; closed). The floating debug
+console: app-wide persistent `DebugLogStore`, connect/cancel-from-console,
+per-severity + per-service filters, sort + "N new" banner + follow toggle,
+`@AppStorage`-persisted filters. Follow-up **#47** filed (Phase I): structured
+per-field "pretty" device rows — **design finalized** (Option C cards; metarow
+under header, aligned timestamps; full spec in the #47 thread), ready to build.
+**#44** (list sort/filter) moved to **Phase I**.
+
+Previously merged + on-device-validated (retained below for reference):
 
 **#17 SnapshotLoggingView — DONE + MERGED** (`fc1c931`, tag
 `17-snapshot-logging-history`; closed; board Done).
@@ -44,15 +53,20 @@ observable `readiness` + `startReadinessMonitoring()`, and the
 > on-device (no `INVALID_OFFSET`), but the fresh flash meant a near-empty store —
 > the exact blob-read path wasn't re-stressed. Not a client concern.
 
-**Next in the session queue (ordered, not started):** **#25**
-DebugOutputStreamView (merged local-BLE + device-debug log viewer — large; #34
-Phase I decode is already handled by the transport's `String` notifications, but
-the **store + view + entry points are unbuilt**) → **#34** Phase II fragment
-reassembly (pair with firmware #50) → **#37** main-menu entry (snapshots +
-settings without connecting) → **#41** unified snapshot review (Phase I,
-Backlog) → **#42** surface firmware build-info in the UI (Phase I, Backlog;
-pairs with firmware #73). Firmware queue on `release/1.0.2`: #71 OTA DFU
-resilience, #68 RTC SQW spam, #74 seed RTC early in boot.
+**Phase I remaining (client):** **#47** (debug pretty rows — design done, ready to
+build) · **#43** (auto-refresh read-once surfaces as new data arrives; consumes
+firmware #75) · **#44** (list sort/filter, now Phase I — generalize #25's
+sort/filter/banner to LogsView + Snapshot lists) · **#46** (handle unsolicited
+disconnect / out-of-range) · **#41** (unified snapshot review) · **#42** (firmware
+build-info in the UI; pairs with firmware #73) · **#37** (main-menu entry — reach
+Snapshots/Settings without connecting) · **#34** (**scope narrowed**: basic UTF-8
+line decode shipped in #25; remaining = **fragment reassembly** for lines split
+across notifications) · **#35/#36** (SwiftLint/DocC + per-dir READMEs).
+
+**Firmware↔client couplings:** firmware #75 ⇄ client #43 · firmware #73 ⇄ client
+#42 · firmware #74 (epoch-0 timestamps) affects client snapshot data. **Firmware
+1.0.2 is still open** (constituents #74/#75/#71/#68 not started; #79 committed,
+needs on-device validation) — see the firmware `SESSION_HANDOFF.md`.
 
 ---
 

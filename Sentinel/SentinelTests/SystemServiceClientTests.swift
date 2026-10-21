@@ -43,13 +43,6 @@ struct SystemServiceClientTests {
         #expect(decoded?.toData() == wire)
     }
 
-    @Test func requestBootloaderModeWritesToTheRightCharacteristic() async throws {
-        let transport = MockBluetoothTransport()
-        try await SystemServiceClient(transport: transport).requestBootloaderMode()
-        #expect(transport.writes.count == 1)
-        #expect(transport.writes.first?.characteristic == SystemCharacteristicUUID.requestBootloaderMode.cbuuid)
-    }
-
     @Test func mockServiceStandsInForPreviews() async throws {
         let mock = MockSystemService(platformID: .rpi5)
         #expect(try await mock.readPlatformID() == .rpi5)

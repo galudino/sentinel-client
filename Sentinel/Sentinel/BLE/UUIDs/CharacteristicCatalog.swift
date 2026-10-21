@@ -247,14 +247,6 @@ enum CharacteristicCatalog {
         ),
         .init(
             service: .system,
-            characteristicCBUUID: SystemCharacteristicUUID.requestBootloaderMode.cbuuid,
-            displayName: "Request Bootloader Mode",
-            dataType: .uint8,
-            lsbUnit: nil,
-            properties: [.write]
-        ),
-        .init(
-            service: .system,
             characteristicCBUUID: SystemCharacteristicUUID.platformID.cbuuid,
             displayName: "Platform ID",
             dataType: .platformID,

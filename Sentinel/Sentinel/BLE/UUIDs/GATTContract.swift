@@ -81,8 +81,6 @@ enum SystemCharacteristicUUID: String, CaseIterable {
     case serialNumber = "49666C6D-2A24-4978-B4E5-A3C3D5B18B93"
     /// R — `FirmwareVersion` (5 B). firmware: CHAR_SYSTEM_FIRMWARE_VERSION.
     case firmwareVersion = "D4EE3C16-5EEC-469E-910A-51C95C9DFE83"
-    /// W — `UInt8` request DFU/bootloader. firmware: CHAR_SYSTEM_REQUEST_BOOTLOADER_MODE.
-    case requestBootloaderMode = "9EA19980-36C2-49CD-A348-CCD803820915"
     /// R — `UInt8` (`PlatformID`). firmware: CHAR_SYSTEM_PLATFORM_ID.
     case platformID = "EC5DBBC3-B5D1-40D3-8022-D4531CDD227C"
     /// R/Notify — `UInt16` 0.01 °C. firmware: CHAR_SYSTEM_CPU_TEMPERATURE.

@@ -11,7 +11,7 @@ import Foundation
 
 /// Cross-cutting device identity + health, mirroring firmware
 /// `sentinel_gatt_system.hpp`: Serial Number (R/W), Firmware Version (R),
-/// Request Bootloader Mode (W), Platform ID (R), CPU Temperature (R/Notify).
+/// Platform ID (R), CPU Temperature (R/Notify).
 ///
 /// The client reads ``readPlatformID()`` — never the human Model Number string —
 /// to choose the firmware/DFU target and (Phase IV) the cloud `target`.
@@ -25,8 +25,6 @@ protocol SystemService {
     func readPlatformID() async throws -> PlatformID
     /// CPU/SoC temperature, 0.01 °C / LSB (0 until wired up on device).
     func readCPUTemperature() async throws -> UInt16
-    /// Ask the device to reboot into bootloader/DFU mode (OTA flow, #22).
-    func requestBootloaderMode() async throws
     func setCPUTemperatureNotifying(_ enabled: Bool) async throws
     func cpuTemperatureNotifications() -> AsyncStream<UInt16>
     /// Device readiness (boot/POST state, #69). Read once on connect to gate the
@@ -71,15 +69,6 @@ struct SystemServiceClient<Transport: BluetoothPeripheralTransport>: SystemServi
     func readCPUTemperature() async throws -> UInt16 {
         try await transport
             .read(characteristic: SystemCharacteristicUUID.cpuTemperature.cbuuid, ofService: service) ?? 0
-    }
-
-    func requestBootloaderMode() async throws {
-        try await transport.write(
-            UInt8(1),
-            characteristic: SystemCharacteristicUUID.requestBootloaderMode.cbuuid,
-            ofService: service,
-            type: .withResponse
-        )
     }
 
     func setCPUTemperatureNotifying(_ enabled: Bool) async throws {
@@ -138,7 +127,6 @@ final class MockSystemService: SystemService, @unchecked Sendable {
     func readFirmwareVersion() async throws -> FirmwareVersion { firmwareVersion }
     func readPlatformID() async throws -> PlatformID { platformID }
     func readCPUTemperature() async throws -> UInt16 { cpuTemperature }
-    func requestBootloaderMode() async throws {}
     func setCPUTemperatureNotifying(_: Bool) async throws {}
     func cpuTemperatureNotifications() -> AsyncStream<UInt16> { .init { $0.yield(cpuTemperature); $0.finish() } }
     func readDeviceReadiness() async throws -> DeviceReadiness { readiness }

@@ -125,20 +125,33 @@
                     )
                 }
             )
-            await Task.detached(priority: .userInitiated) { Self.write(spec, entries: entries) }.value
+            await Task.detached(priority: .userInitiated) {
+                do {
+                    try SyntheticSessionWriter.write(spec, entries: entries)
+                } catch {
+                    assertionFailure("Synthetic session write failed: \(error)")
+                }
+            }.value
             loadCompletedSessions()
         }
+    }
 
-        private nonisolated static func write(_ spec: SyntheticSessionSpec, entries: [SnapshotLogEntry]) {
+    /// File-based persistence for one synthetic session. Deliberately kept off the
+    /// generic `SnapshotLoggingManager<Provider>`: the detached writer must not
+    /// capture `Self` (i.e. `Provider.Type`), which is non-Sendable because
+    /// `SnapshotDataProvider` isn't `Sendable`. These helpers need only the
+    /// `Sendable` `SyntheticSessionSpec` + entries, so they live in a non-generic
+    /// namespace that's safe to reference from the detached task.
+    private enum SyntheticSessionWriter {
+        nonisolated static func write(_ spec: SyntheticSessionSpec, entries: [SnapshotLogEntry]) throws {
             let fileManager = SessionFileManager.shared
-            try? fileManager.createSessionFile(header: header(for: spec))
-            if let handle = try? fileManager.openForAppending(sessionId: spec.sessionId) {
-                for entry in entries {
-                    handle.write(SessionBinaryFormat.encodeEntry(entry, captureMode: spec.captureMode))
-                }
-                try? handle.close()
+            try fileManager.createSessionFile(header: header(for: spec))
+            let handle = try fileManager.openForAppending(sessionId: spec.sessionId)
+            for entry in entries {
+                handle.write(SessionBinaryFormat.encodeEntry(entry, captureMode: spec.captureMode))
             }
-            try? fileManager.writeFooter(
+            try handle.close()
+            try fileManager.writeFooter(
                 SessionFileFooter(
                     endTime: spec.end, duration: spec.duration, status: .completed, entryCount: UInt32(entries.count)
                 ),

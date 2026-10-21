@@ -20,6 +20,21 @@ the architecture docs rather than letting them accumulate here.
 
 ---
 
+**Last updated:** 2026-10-20. **#48 GATT: remove Request Bootloader Mode — DONE +
+MERGED.** Contract mirror of firmware **#71** (fw commit `04caed2`): the System
+service `Request Bootloader Mode` characteristic (UUID
+`9EA19980-36C2-49CD-A348-CCD803820915`) was vestigial for OTA DFU — OTA runs
+in-app and MCUBoot swaps on the post-download reset, so it only amounted to a
+delayed device reset — and on the client it was already dead code
+(`requestBootloaderMode()` defined, never called). Removed the contract enum case
+(`GATTContract.swift`), the Characteristic Catalog descriptor
+(`CharacteristicCatalog.swift`), the protocol/client/mock method
+(`SystemService.swift`), and the two pinning tests; the catalog's
+1:1-with-contract invariant stays balanced (case + descriptor removed together).
+Build + tests clean on iPhone 17 Pro (iOS 26.4). Squash `6fc2069` on `develop` →
+`main` merge `3b5fbcf`; pre-squash history tag
+`48-remove-request-bootloader-mode-history`; branch deleted; #48 closed; board Done.
+
 **Last updated:** 2026-10-10. **#25 DebugOutputStreamView — DONE + MERGED** (squash
 `6d4acdb` on `develop` → `main` `bd0a1b0`; pre-squash history tag
 `25-debug-output-stream-view-history`; branch deleted; closed). The floating debug

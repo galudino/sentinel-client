@@ -20,6 +20,28 @@ the architecture docs rather than letting them accumulate here.
 
 ---
 
+**Last updated:** 2026-11-13. **#57 Logs: acronym-aware `.other` event titles +
+title/subtitle polish — DONE + MERGED (develop + main).** The `.other` fallback
+humanizer split before every capital and lower-cased the rest, mangling acronyms
+(`rtcSetFromBLE` → "Rtc set from b l e", `fanRPMThresholdChanged` → "Fan r p m threshold
+changed"). Replaced with one acronym-aware formatter: `SystemEvent.displayName`
+tokenizes the case name on real camelCase/acronym boundaries (split at lower→upper and
+at the end of an acronym run before a new word, so "RPM"/"BLE" stay intact) and
+upper-cases tokens in `SystemEvent.titleAcronyms` (BLE/RPM/RTC/POST/… — **single source
+of truth**), sentence-case otherwise → "RTC set from BLE", "Fan RPM threshold changed";
+`displayTitle`'s `.other` branch now uses `event?.displayName` (old humanizer removed).
+**Also, same Logs surface, title/subtitle split** (title = clean label, detail = subtitle):
+Boot complete → title "Boot complete" + subtitle "v<short>" (was "Boot complete (v…)");
+Unknown event → title "Unknown event" + subtitle "type 0x<hex>". Tests:
+`SystemEventRecordTests` (11) green on iPhone 17 Pro iOS 26.4. `develop` ff to `134e86c`
+→ `main` code merge `2d27c6c` (+ handoff merge); history tag
+`57-acronym-aware-event-titles-history` (`134e86c`); branch deleted; #57 closed; board
+Done. **Remaining follow-ups (filed, open):** #54 (Logs surface "Firmware update
+completed" after a DFU), #55 (adapter power-off → clean teardown to scanning), #56
+(snapshot Details-pane drag stutter, assigned to owner). **#51 still held** on
+`51-firmware-bundle-wip-dfu-images` (WIP A/B images). **Stray file:** untracked 0-byte
+`sentinel-firmware_0.0.0.0-empty.bin` in the working tree (keep/delete TBD).
+
 **Last updated:** 2026-11-13. **#52 OTA recovery no-hang + #53 reuse-live-link — DONE
 + MERGED (develop + main).** Follow-ups to #50. **#51 (WIP A/B bundled images)
 deliberately NOT landed** — it bundles WIP test firmware (`1.0.2.107-wip` /

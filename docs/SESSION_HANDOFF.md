@@ -20,6 +20,42 @@ the architecture docs rather than letting them accumulate here.
 
 ---
 
+**Last updated:** 2026-11-12. **#50 OTA: recover to a clean connected state after a
+failed/interrupted update — DONE + MERGED.** Downstream half of firmware **#83**
+(OTA-agent teardown hotfix; also pairs with firmware **#71**/**#80**, release
+1.0.2.0). **Confirmed bug:** on OTA `.failed` (thrown error, signal loss, ABORT, or
+verify-fail) the app returned to `MainTabView` on the **stale pre-update peer** —
+`FirmwareUpdateView`'s `.failed` routed Cancel → `cancelFirmwareUpdate()` →
+`.connected(originalPeer)` and "Try again" reused the dead transport; reconnect only
+happened on the *success* path. **Fix (focused on the failure path):** `OTAUploader`
+gains `.recovering`/`.recovered` + an idempotent `recover()` (tear down OTA session →
+best-effort ABORT [device OTA-agent teardown, mirrors fw#83] → reconnect to the same
+identity via the existing `FirmwareReconnector`); `AppRouter.firmwareUpdateUnrecoverable()`
+→ `.scanning` fallback (reuses `firmwareUpdateReconnected` for the clean-link case);
+`FirmwareUpdateView` `.failed` now offers **Try Again** (recover → fresh uploader on
+the reconnected peer, clean slate) + **Back to Device** (recover → `.connected(fresh)`)
+— both re-establish a known-good link first, never the stale peer. **fw#83 reason
+codes NOT mirrored** — as of firmware `develop`, `firmware_update_record.mcuboot_result`
+still carries the raw `cy_ota` code, not the discrete `aborted=1/signal-lost=2/
+verify-failed=3` values, so `FirmwareUpdateBody` keeps a **TODO referencing fw#83**
+rather than guessing the encoding (wire it once #83 lands). New recovery tests in
+`OTAUploaderTests` + `AppRouterTests` (incl. cancel-gating for the new states).
+**Also folded in** an incidental, pre-existing test-target fix: `FirmwareVersion`'s
+`init?(parsing:)` + `Comparable` extensions were implicitly MainActor-isolated under
+`-default-isolation=MainActor` (unlike the primary decl / other extensions), which a
+newer Swift toolchain now rejects in `FirmwareVersionTests` — marked both `nonisolated`
+(the whole `SentinelTests` target otherwise fails to compile). **Env note:** the
+pre-created "iPhone 17 Pro" sims are pinned to iOS 26.0–26.2; the app targets 26.4, so
+test on a 26.4 device (e.g. `EBCCED16-99AC-4DA2-9354-B989E1C39C46`). Squash `b0cda8f`
+on `develop` → `main` merge `c0993d6`; pre-squash history tag
+`50-ota-recover-clean-state-history` (`9ddc93d`); branch deleted; #50 closed; board
+Done. **Known pre-existing flaky test (unrelated, candidate follow-up):**
+`DebugLogTests.filterRoundTripsThroughRawValue()` passes 3/3 in isolation but trips
+intermittently under parallel full-suite runs (JSONEncoder/Set ordering). **Stray
+file:** an untracked 0-byte `Sentinel/Sentinel/Resources/Firmware/sentinel-firmware_empty.bin`
+was in the index at session start (unrelated) — unstaged, left on disk; decide
+keep/delete.
+
 **Last updated:** 2026-10-20. **#48 GATT: remove Request Bootloader Mode — DONE +
 MERGED.** Contract mirror of firmware **#71** (fw commit `04caed2`): the System
 service `Request Bootloader Mode` characteristic (UUID

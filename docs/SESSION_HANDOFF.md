@@ -35,11 +35,11 @@ reconnect/read times out resolves to `.complete` (the update DID succeed), never
 `.failed`; `FirmwareUpdateView` routes a completed-but-not-reconnected update to the
 device list (`firmwareUpdateUnrecoverable`) instead of `MainTabView` on the dead peer.
 New test `successReconnectTimesOutButStillCompletes` passes; full `SentinelTests` green
-**except one pre-existing, unrelated failure on `develop`:
-`DebugLogTests.filterRoundTripsThroughRawValue`** (a `DebugLogFilter` rawValue
-round-trip, from #25 — NOT touched by this branch; needs its own look). Pairs with
-#52/#53/#58; firmware #81 validated on-device. **Next:** merge `59` → develop/main
-(git-flow), rebuild, re-run the DFU to confirm the clean landing.
+**except the known pre-existing parallel-only flake
+`DebugLogTests.filterRoundTripsThroughRawValue`** (see the dedicated note below —
+unrelated to #59, codec is sound). Pairs with #52/#53/#58; firmware #81 validated
+on-device. **Next:** merge `59` → develop/main (git-flow), rebuild, re-run the DFU to
+confirm the clean landing.
 
 **Last updated:** 2026-11-13. **#57 Logs: acronym-aware `.other` event titles +
 title/subtitle polish — DONE + MERGED (develop + main).** The `.other` fallback
@@ -125,8 +125,15 @@ test on a 26.4 device (e.g. `EBCCED16-99AC-4DA2-9354-B989E1C39C46`). Squash `b0c
 on `develop` → `main` merge `c0993d6`; pre-squash history tag
 `50-ota-recover-clean-state-history` (`9ddc93d`); branch deleted; #50 closed; board
 Done. **Known pre-existing flaky test (unrelated, candidate follow-up):**
-`DebugLogTests.filterRoundTripsThroughRawValue()` passes 3/3 in isolation but trips
-intermittently under parallel full-suite runs (JSONEncoder/Set ordering). **Stray
+`DebugLogTests.filterRoundTripsThroughRawValue()` passes in isolation but fails under
+parallel full-suite runs — **reproduced 2/2 on 2026-11-13.** NOT a codec/ordering bug:
+the `.xcresult` expectation diff shows two **byte-identical** `DebugLogFilter` values
+(single-element sets — no ordering ambiguity) comparing `!=`. A correct value-type `==`
+returning false for identical contents, only under parallelism, points to **heap/runtime
+state corruption from a racy sibling test** (this suite has `@unchecked Sendable` BLE
+types with hand-rolled synchronization), not `DebugLogFilter`. Likely fixes: find+fix the
+data race, or mark the suite/`DebugLogTests` `.serialized` as a stopgap. The earlier
+"JSONEncoder/Set ordering" guess is superseded. **Stray
 file:** an untracked 0-byte `Sentinel/Sentinel/Resources/Firmware/sentinel-firmware_empty.bin`
 was in the index at session start (unrelated) — unstaged, left on disk; decide
 keep/delete.

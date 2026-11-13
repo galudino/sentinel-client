@@ -20,6 +20,28 @@ the architecture docs rather than letting them accumulate here.
 
 ---
 
+**Last updated:** 2026-11-13. **#52 OTA recovery: never hang on "Recovering…" —
+COMMITTED on branch `52-ota-recovery-no-hang` (`157ca2a`), not merged.** Stacked on
+**#51** (branch `51-firmware-bundle-wip-dfu-images`, `1c89c5a`) — merge #51 first.
+**Bench bug:** an interrupted OTA left the app spinning on "Recovering…" forever —
+`OTAUploader.recover()` awaited `FirmwareReconnector.reconnect()` →
+`BluetoothManager.connect()` → **AsyncBluetooth's connect stores a continuation and
+does NOT honor task cancellation** (no built-in timeout), so `recover()` never returned
+and the view's `.failed → firmwareUpdateUnrecoverable() → .scanning` fallback never ran.
+**Fix:** bound the reconnect with an injectable `recoveryTimeout` (default 45 s); since
+the underlying connect ignores cancellation (a `TaskGroup` would block on it), race two
+unstructured main-actor tasks via a continuation and **abandon** the reconnect if the
+watchdog wins → `recover()` resolves to `.failed` → view routes to `.scanning`. New
+`recoverTimesOutWhenReconnectHangs` test (50 ms injected timeout, no real wait); whole
+`OTAUploaderTests` + `FirmwareCatalogTests` green on the 26.4 sim. Pairs with firmware
+reset-on-failure (`galudino/sentinel-firmware#84`) — the device reboots on a failed OTA
+so the reconnect target is clean; the two reinforce each other.
+**#51 (bundle refresh):** removed stale `1.0.1` / `255.255.255-test`, bundled the two
+WIP A/B DFU test images (`1.0.2.107-wip` + `51.0.2.107-wip`, major+50 for an unmistakable
+always-higher swap target) + kept `empty.bin` (resolves the stray-untracked-empty.bin
+note below). `FirmwareCatalog` scans the bundle at runtime (no manifest); both are
+pre-release, so nothing is `recommended()` today — intentional for the test phase.
+
 **Last updated:** 2026-11-12. **#50 OTA: recover to a clean connected state after a
 failed/interrupted update — DONE + MERGED.** Downstream half of firmware **#83**
 (OTA-agent teardown hotfix; also pairs with firmware **#71**/**#80**, release

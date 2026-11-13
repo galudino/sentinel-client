@@ -259,6 +259,11 @@ final class OTAUploader {
     /// settle on the main actor, so a plain flag suffices (no lock).
     private var recoveryRaceSettled = false
 
+    /// #59: the service handed back by the last successful ``reconnectWithinTimeout``,
+    /// stashed on the main actor (never across the continuation) so the post-DFU
+    /// success path can read the running version after a *bounded* reconnect.
+    private var reconnectedSystem: (any SystemService)?
+
     /// Await `reconnector.reconnect()` bounded by ``recoveryTimeout``; throws
     /// `OTAError.timedOut` if it doesn't finish in time.
     ///
@@ -276,11 +281,13 @@ final class OTAUploader {
         let reconnected: Bool = await withCheckedContinuation { continuation in
             // Racer 1: the reconnect (may outlive this call if connect never returns).
             Task { @MainActor [weak self] in
-                var ok = false
-                do { _ = try await reconnector.reconnect(); ok = true } catch { ok = false }
+                let reconnected = try? await reconnector.reconnect()
                 guard let self, !self.recoveryRaceSettled else { return }
                 recoveryRaceSettled = true
-                continuation.resume(returning: ok)
+                // #59: stash the reconnected service (main-actor → main-actor, never
+                // across the continuation) so the success path can confirm the version.
+                reconnectedSystem = reconnected
+                continuation.resume(returning: reconnected != nil)
             }
             // Racer 2: the watchdog.
             Task { @MainActor [weak self] in
@@ -329,6 +336,41 @@ final class OTAUploader {
                 continuation.resume(returning: false)
             }
         }
+    }
+
+    /// Guards the confirm-read race so its continuation resumes exactly once.
+    private var confirmReadSettled = false
+    /// #59: version read back by the last ``readVersionWithinTimeout(_:)``.
+    private var confirmedVersion: FirmwareVersion?
+
+    /// #59: bounded firmware-version read on `service`, raced against ``verifyTimeout``.
+    /// Returns the version, or `nil` if it didn't come back in time — a GATT read can
+    /// hang on a freshly-rebooted link, so the loser is abandoned rather than awaited
+    /// (mirrors ``reconnectWithinTimeout(_:)`` / ``probeLinkAlive(timeout:)``; both
+    /// racers run on the main actor, so the non-`Sendable` service never crosses an
+    /// isolation boundary).
+    private func readVersionWithinTimeout(_ service: any SystemService) async -> FirmwareVersion? {
+        confirmReadSettled = false
+        confirmedVersion = nil
+        let timeout = verifyTimeout
+        let ok: Bool = await withCheckedContinuation { continuation in
+            // Racer 1: the version read (may outlive this call on a wedged link).
+            Task { @MainActor [weak self] in
+                let version = try? await service.readFirmwareVersion()
+                guard let self, !self.confirmReadSettled else { return }
+                confirmReadSettled = true
+                confirmedVersion = version
+                continuation.resume(returning: version != nil)
+            }
+            // Racer 2: the watchdog.
+            Task { @MainActor [weak self] in
+                try? await Task.sleep(for: timeout)
+                guard let self, !self.confirmReadSettled else { return }
+                confirmReadSettled = true
+                continuation.resume(returning: false)
+            }
+        }
+        return ok ? confirmedVersion : nil
     }
 
     // MARK: Run
@@ -384,17 +426,39 @@ final class OTAUploader {
 
             // 6. Reconnect (production) then confirm the running version. With no
             //    reconnector wired (tests/previews) the original service stands in.
+            //    #59: both the reconnect and the confirm read are bounded — the device
+            //    has rebooted, the old link is dead, and CoreBluetooth's connect never
+            //    times out (same root cause as #52's "Recovering…" hang). The update
+            //    already SUCCEEDED here (the device confirmed the swap), so a slow or
+            //    unavailable reconnect is NOT a failure: resolve to `.complete` and let
+            //    the view land on the device list rather than hang on "Reconnecting…".
             let verifySystem: any SystemService
             if let reconnector {
                 state = .reconnecting
-                verifySystem = try await reconnector.reconnect()
+                reconnectedSystem = nil
+                do {
+                    try await reconnectWithinTimeout(reconnector)
+                } catch {
+                    state = .complete
+                    progressFraction = 1
+                    return
+                }
+                guard let reconnected = reconnectedSystem else {
+                    state = .complete
+                    progressFraction = 1
+                    return
+                }
+                verifySystem = reconnected
             } else {
                 verifySystem = system
             }
             state = .verifying
-            let running = try await verifySystem.readFirmwareVersion()
-            guard running.sameRelease(as: image.version) else {
-                throw OTAError.versionMismatch(expected: image.version, actual: running)
+            // #59: a confirmed swap we simply couldn't re-read in time is still a
+            // success; only a version we DID read and that mismatches is a real failure.
+            if let running = await readVersionWithinTimeout(verifySystem) {
+                guard running.sameRelease(as: image.version) else {
+                    throw OTAError.versionMismatch(expected: image.version, actual: running)
+                }
             }
 
             state = .complete

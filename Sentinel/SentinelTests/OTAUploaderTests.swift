@@ -52,6 +52,24 @@ struct OTAUploaderTests {
         #expect(reconnector.reconnectCount == 1)
     }
 
+    /// #59: the post-DFU **success** reconnect must be bounded like the failure path
+    /// (#52) — CoreBluetooth's connect never times out. A hung reconnect after a
+    /// confirmed swap resolves to `.complete` within `recoveryTimeout` (the update DID
+    /// succeed), never an indefinite "Reconnecting…" and never `.failed`.
+    @Test func successReconnectTimesOutButStillCompletes() async {
+        let ota = ScriptedOTAService()
+        let reconnector = MockFirmwareReconnector(system: MockSystemService(firmwareVersion: target))
+        reconnector.shouldHang = true
+        let uploader = OTAUploader(
+            ota: ota, system: MockSystemService(), mtu: 247,
+            reconnector: reconnector, recoveryTimeout: .milliseconds(50)
+        )
+
+        await run(uploader, image())
+
+        #expect(uploader.state == .complete)
+    }
+
     @Test func crc32RoundTripsThroughVerify() async {
         let ota = ScriptedOTAService()
         let img = image()

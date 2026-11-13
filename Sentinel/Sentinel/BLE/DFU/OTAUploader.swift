@@ -87,6 +87,12 @@ final class OTAUploader {
         case restarting
         case reconnecting
         case verifying
+        /// Post-failure cleanup: the OTA session is being torn down and a
+        /// known-good link re-established after a failed/interrupted update (#50).
+        case recovering
+        /// Recovery succeeded — a fresh, known-good connection is in hand (the
+        /// update itself did *not* apply). Terminal; distinct from ``complete``.
+        case recovered
         case complete
         case failed(String)
 
@@ -100,6 +106,8 @@ final class OTAUploader {
             case .restarting: "Restarting device…"
             case .reconnecting: "Reconnecting…"
             case .verifying: "Confirming version…"
+            case .recovering: "Recovering…"
+            case .recovered: "Connection restored."
             case .complete: "Update complete."
             case .failed: "Update failed."
             }
@@ -173,6 +181,40 @@ final class OTAUploader {
         try? await ota.writeControlPoint(Data([Command.abort.rawValue]))
         state = .idle
         progressFraction = 0
+    }
+
+    /// Recover from a failed/interrupted update to a known-good link (#50). Only
+    /// valid from `.failed`; a no-op from any other state, so repeated calls are
+    /// idempotent. Tears down the OTA session, sends a best-effort `ABORT` so the
+    /// device tears down its OTA agent (mirrors firmware #83 — swallowed if the
+    /// link already dropped on signal loss), then reconnects to the same identity.
+    ///
+    /// - On success → `.recovered`; the injected ``FirmwareReconnector`` now holds
+    ///   the fresh connection (read by `FirmwareUpdateView` to hand the router the
+    ///   new peer). The update did *not* apply — this only restores a clean link.
+    /// - With no reconnector (tests/previews) or a failed reconnect (device gone)
+    ///   → `.failed`, so the caller routes to a well-defined fallback (`.scanning`).
+    func recover() async {
+        guard case let .failed(message) = state else { return }
+        runTask?.cancel()
+        runTask = nil
+        statusReader = nil
+        progressFraction = 0
+        state = .recovering
+
+        // Best-effort device-side teardown; no-op if the link is already gone.
+        try? await ota.writeControlPoint(Data([Command.abort.rawValue]))
+
+        guard let reconnector else {
+            state = .failed(message) // no central to reconnect with — unrecoverable here
+            return
+        }
+        do {
+            _ = try await reconnector.reconnect()
+            state = .recovered
+        } catch {
+            state = .failed(Self.message(for: error))
+        }
     }
 
     // MARK: Run

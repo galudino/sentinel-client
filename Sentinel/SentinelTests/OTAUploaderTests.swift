@@ -189,6 +189,77 @@ struct OTAUploaderTests {
         #expect(reason.contains("empty"))
     }
 
+    // MARK: Recovery (#50)
+
+    /// A failed upload recovers to a known-good link: `.failed` → `recover()` →
+    /// `.recovered`, with a best-effort ABORT sent and the reconnector exercised.
+    @Test func recoverReconnectsAndReachesRecovered() async {
+        let ota = ScriptedOTAService()
+        ota.statusForVerify = OTAUploader.Status.verificationFailed.rawValue
+        let reconnector = MockFirmwareReconnector(system: MockSystemService(firmwareVersion: target))
+        let uploader = OTAUploader(ota: ota, system: MockSystemService(), mtu: 247, reconnector: reconnector)
+
+        await run(uploader, image())
+        guard case .failed = uploader.state else {
+            Issue.record("expected .failed before recovery, got \(uploader.state)")
+            return
+        }
+
+        await uploader.recover()
+
+        #expect(uploader.state == .recovered)
+        #expect(reconnector.reconnectCount == 1)
+        #expect(uploader.progressFraction == 0)
+        #expect(ota.controlWrites.contains { $0.first == OTAUploader.Command.abort.rawValue })
+    }
+
+    /// Recovery that can't re-establish the link stays `.failed` (the view then
+    /// routes to scanning) rather than claiming a clean connection.
+    @Test func recoverStaysFailedWhenReconnectFails() async {
+        let ota = ScriptedOTAService()
+        ota.statusForVerify = OTAUploader.Status.verificationFailed.rawValue
+        let reconnector = MockFirmwareReconnector(system: MockSystemService(firmwareVersion: target))
+        reconnector.shouldFail = true
+        let uploader = OTAUploader(ota: ota, system: MockSystemService(), mtu: 247, reconnector: reconnector)
+
+        await run(uploader, image())
+        await uploader.recover()
+
+        guard case .failed = uploader.state else {
+            Issue.record("expected .failed after a failed reconnect, got \(uploader.state)")
+            return
+        }
+    }
+
+    /// With no reconnector (tests/previews) there is no link to re-establish, so
+    /// recovery stays `.failed`.
+    @Test func recoverStaysFailedWithoutReconnector() async {
+        let ota = ScriptedOTAService()
+        ota.statusForVerify = OTAUploader.Status.verificationFailed.rawValue
+        let uploader = OTAUploader(ota: ota, system: MockSystemService(firmwareVersion: target), mtu: 247)
+
+        await run(uploader, image())
+        await uploader.recover()
+
+        guard case .failed = uploader.state else {
+            Issue.record("expected .failed without a reconnector, got \(uploader.state)")
+            return
+        }
+    }
+
+    /// `recover()` is a no-op unless the uploader is `.failed`, so repeated or
+    /// mistimed calls are idempotent.
+    @Test func recoverIsNoOpUnlessFailed() async {
+        let ota = ScriptedOTAService()
+        let reconnector = MockFirmwareReconnector(system: MockSystemService(firmwareVersion: target))
+        let uploader = OTAUploader(ota: ota, system: MockSystemService(), mtu: 247, reconnector: reconnector)
+
+        await uploader.recover() // from .idle
+
+        #expect(uploader.state == .idle)
+        #expect(reconnector.reconnectCount == 0)
+    }
+
     // MARK: Cancel gating
 
     @Test func cancelSendsAbortAndResets() async {
@@ -209,6 +280,8 @@ struct OTAUploaderTests {
         #expect(!OTAUploader.State.restarting.isCancellable)
         #expect(!OTAUploader.State.reconnecting.isCancellable)
         #expect(!OTAUploader.State.verifying.isCancellable)
+        #expect(!OTAUploader.State.recovering.isCancellable)
+        #expect(!OTAUploader.State.recovered.isCancellable)
         #expect(!OTAUploader.State.complete.isCancellable)
         #expect(!OTAUploader.State.failed("x").isCancellable)
     }

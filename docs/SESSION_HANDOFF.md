@@ -20,6 +20,27 @@ the architecture docs rather than letting them accumulate here.
 
 ---
 
+**Last updated:** 2026-11-13. **#59 DFU: post-update reconnect no longer hangs on
+"Reconnecting…" — COMMITTED on branch `59-ota-success-reconnect-bound` (`826e745`),
+bench-pending.** Bench repro with firmware #81: a *successful* DFU (1.0.2.111 →
+51.0.2.111; serial confirmed `firmware_update_completed`, board healthy) left the app
+stuck on "Reconnecting…". Root cause: the **success** path in `OTAUploader.run()`
+awaited `reconnector.reconnect()` (and the follow-on `readFirmwareVersion()`) with **no
+timeout** — unlike `recover()`, which #52/#53 already bound. CoreBluetooth's `connect`
+never times out, so a slow post-reboot reconnect hung `.reconnecting` forever even
+though the update had already succeeded. **Fix:** bound both via `reconnectWithinTimeout`
++ a new `readVersionWithinTimeout` (same race-and-abandon; the reconnected service is
+stashed main-actor → main-actor, never across the continuation). A confirmed swap whose
+reconnect/read times out resolves to `.complete` (the update DID succeed), never
+`.failed`; `FirmwareUpdateView` routes a completed-but-not-reconnected update to the
+device list (`firmwareUpdateUnrecoverable`) instead of `MainTabView` on the dead peer.
+New test `successReconnectTimesOutButStillCompletes` passes; full `SentinelTests` green
+**except one pre-existing, unrelated failure on `develop`:
+`DebugLogTests.filterRoundTripsThroughRawValue`** (a `DebugLogFilter` rawValue
+round-trip, from #25 — NOT touched by this branch; needs its own look). Pairs with
+#52/#53/#58; firmware #81 validated on-device. **Next:** merge `59` → develop/main
+(git-flow), rebuild, re-run the DFU to confirm the clean landing.
+
 **Last updated:** 2026-11-13. **#57 Logs: acronym-aware `.other` event titles +
 title/subtitle polish — DONE + MERGED (develop + main).** The `.other` fallback
 humanizer split before every capital and lower-cased the rest, mangling acronyms

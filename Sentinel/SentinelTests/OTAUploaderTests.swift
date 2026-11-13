@@ -231,6 +231,29 @@ struct OTAUploaderTests {
         }
     }
 
+    /// #52: a reconnect that never completes (CoreBluetooth's `connect` has no
+    /// timeout) must not hang on `.recovering` forever — `recoveryTimeout` resolves
+    /// `recover()` to `.failed`, so the view can route to scanning.
+    @Test func recoverTimesOutWhenReconnectHangs() async {
+        let ota = ScriptedOTAService()
+        ota.statusForVerify = OTAUploader.Status.verificationFailed.rawValue
+        let reconnector = MockFirmwareReconnector(system: MockSystemService(firmwareVersion: target))
+        reconnector.shouldHang = true
+        let uploader = OTAUploader(
+            ota: ota, system: MockSystemService(), mtu: 247,
+            reconnector: reconnector, recoveryTimeout: .milliseconds(50)
+        )
+
+        await run(uploader, image())
+        await uploader.recover()
+
+        guard case .failed = uploader.state else {
+            Issue.record("expected .failed after a hung reconnect timed out, got \(uploader.state)")
+            return
+        }
+        #expect(reconnector.reconnectCount == 1)
+    }
+
     /// With no reconnector (tests/previews) there is no link to re-establish, so
     /// recovery stays `.failed`.
     @Test func recoverStaysFailedWithoutReconnector() async {

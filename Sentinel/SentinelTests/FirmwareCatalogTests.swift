@@ -85,17 +85,20 @@ struct FirmwareCatalogTests {
         // carries Resources/Firmware, not the test bundle.
         let bundle = Bundle(for: BluetoothManager.self)
         let images = FirmwareCatalog.bundledImages(in: bundle)
-        let v101 = FirmwareVersion(major: 1, minor: 0, patch: 1, build: 0)
-        let vTest = FirmwareVersion(major: 255, minor: 255, patch: 255, build: 0)
+        // The two WIP DFU test images, distinguished by `major` alone (base vs
+        // base + 50) so a swap is unmistakable and always version-accepted.
+        let vBase = FirmwareVersion(major: 1, minor: 0, patch: 2, build: 107)
+        let vTwin = FirmwareVersion(major: 51, minor: 0, patch: 2, build: 107)
 
         let versions = Set(images.map(\.version))
-        #expect(versions.contains(v101)) // real 1.0.1 (recommended baseline)
-        #expect(versions.contains(vTest)) // 255.255.255-test standout test image
-        // Newest-first ordering.
+        #expect(versions.contains(vBase)) // 1.0.2.107-wip base
+        #expect(versions.contains(vTwin)) // 51.0.2.107-wip DFU target (major + 50)
+        // Newest-first ordering; the twin (major 51) sorts first.
         #expect(images.first?.version == images.map(\.version).max())
-        // The test build is flagged pre-release; the stable 1.0.1 is not.
-        #expect(images.first { $0.version == vTest }?.isPrerelease == true)
-        #expect(images.first { $0.version == v101 }?.isPrerelease == false)
+        #expect(images.first?.version == vTwin)
+        // Both carry a `-wip` label, so both are flagged pre-release (never recommended).
+        #expect(images.first { $0.version == vBase }?.isPrerelease == true)
+        #expect(images.first { $0.version == vTwin }?.isPrerelease == true)
         // Real signed MCUBoot images carry the header magic 0x96f3b83d (LE).
         if let latest = images.first {
             #expect(latest.data.count > 1000)

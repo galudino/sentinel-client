@@ -12,11 +12,14 @@ import Foundation
 ///
 /// **Phase I: bundled images only.** Known-good signed `.bin`s ship in the app
 /// bundle under `Resources/Firmware/`, named `sentinel-firmware_<version>[-<label>].bin`
-/// — currently the stable **`1.0.1`** (the recommended baseline / "factory reset"
-/// image) and a deliberately-absurd **`255.255.255-test`** standout test build. The
-/// newest *stable* image is the "recommended" default; pre-release/test builds
-/// (a `-<label>` suffix) are selectable but never recommended. Bundling stock
-/// firmware lets the app reflash a device to known-good firmware offline.
+/// — currently two WIP DFU test images built from the same firmware source and
+/// distinguished by `major` alone: the **`1.0.2.107-wip`** base and a
+/// **`51.0.2.107-wip`** DFU target (`major + 50`, so the swap is always accepted and
+/// the running version is unmistakable after a flash). Both carry a `-wip` label, so
+/// both are pre-release. The newest *stable* image is the "recommended" default;
+/// pre-release/test builds (a `-<label>` suffix) are selectable but never recommended
+/// — with only `-wip` images bundled today there is no recommended update. Bundling
+/// stock firmware lets the app reflash a device offline.
 ///
 /// **Later (Phase IV, issue #32):** cloud retrieval from S3 becomes another source
 /// and the true "latest" — the recommend logic below is source-agnostic, so it

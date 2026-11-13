@@ -20,6 +20,38 @@ the architecture docs rather than letting them accumulate here.
 
 ---
 
+**Last updated:** 2026-11-13. **#52 OTA recovery no-hang + #53 reuse-live-link — DONE
++ MERGED (develop + main).** Follow-ups to #50. **#51 (WIP A/B bundled images)
+deliberately NOT landed** — it bundles WIP test firmware (`1.0.2.107-wip` /
+`51.0.2.107-wip`) plus its `FirmwareCatalog` wiring and is held on branch
+`51-firmware-bundle-wip-dfu-images` pending a real-image swap; #52 and #53 were
+cherry-picked onto `develop` *off* #51 (disjoint file sets, no conflict). **#52
+(`6a2431e`):** an interrupted OTA could spin on "Recovering…" forever — AsyncBluetooth
+`connect` ignores cancellation, so `recover()` never returned. Bound the post-failure
+reconnect with an injectable `recoveryTimeout` (45 s): race the reconnect against a
+main-actor watchdog and abandon it on timeout → `.failed` → view routes to `.scanning`.
+**#53 (`942e4bb`):** "Recovering…" was *also* slow (not just the hang) after an early
+failure — `recover()` always ran the post-reboot rescan (`BluetoothManager.reconnect`
+waits for the device to re-advertise, up to the full window), but a pre-reset failure
+(empty image / rejected Prepare-Start-Verify) never rebooted the device, so it's still
+connected (not advertising) and the rescan burned the whole window. Fix: `recover()`
+fast-paths when `!deviceDidReset` **and** a bounded `probeLinkAlive()` (live
+firmware-version read, 2 s) confirms the original link — reuse it, skip the rescan;
+`FirmwareUpdateView` routes to `reconnectedPeer ?? peer`. Mid-upload signal loss fails
+the probe and still falls through to #52's bounded reconnect. `MockSystemService.failReads`
+seam added so recovery tests force the dead-link path. Tests: `OTAUploaderTests` +
+`AppRouterTests` green on iPhone 17 Pro iOS 26.4 (`EBCCED16-99AC-4DA2-9354-B989E1C39C46`).
+`develop` #52 `6a2431e` → #53 `942e4bb`; `main` code merge `a01a3ea` (+ handoff merge).
+Pre-squash history tags `52-ota-recovery-no-hang-history` (`a0bfb58`) +
+`53-ota-recovery-reuse-live-link-history` (`01520b4`). **New follow-up issues (Phase I,
+on board):** **#54** Logs: surface "Firmware update completed" after a DFU (client
+auto-refresh of the event log + confirm firmware emits `0x05`); **#55** BLE: observe the
+adapter power-state → clean teardown to scanning on power-off (distinct from #46's
+*peer* disconnect/out-of-range); **#56** Snapshot full-screen chart: Details-pane drag
+stutter (cumulative `DragGesture.translation` double-counted in `.onChanged`; assigned
+to owner). **Stray file:** untracked 0-byte `sentinel-firmware_0.0.0.0-empty.bin` in the
+working tree (owner's empty-file DFU test artifact) — left on disk, keep/delete TBD.
+
 **Last updated:** 2026-11-12. **#50 OTA: recover to a clean connected state after a
 failed/interrupted update — DONE + MERGED.** Downstream half of firmware **#83**
 (OTA-agent teardown hotfix; also pairs with firmware **#71**/**#80**, release

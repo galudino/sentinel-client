@@ -218,7 +218,10 @@ struct FirmwareUpdateView: View {
                 if let reconnectedPeer = reconnector?.reconnectedPeer {
                     router.firmwareUpdateReconnected(peer: reconnectedPeer)
                 } else {
-                    router.firmwareUpdateCompleted()
+                    // #59: the update succeeded but we have no fresh link (the reconnect
+                    // timed out; the device rebooted, so the pre-update peer is dead).
+                    // Land on the device list rather than MainTabView on a stale link.
+                    router.firmwareUpdateUnrecoverable()
                 }
             }
             .buttonStyle(.borderedProminent)

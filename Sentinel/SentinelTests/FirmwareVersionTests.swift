@@ -18,9 +18,19 @@ struct FirmwareVersionTests {
         #expect(version == FirmwareVersion(major: 1, minor: 2, patch: 3, build: 0))
     }
 
+    @Test func parsesThreeMaxedComponents() {
+        let version = FirmwareVersion(parsing: "255.255.255")
+        #expect(version == FirmwareVersion(major: 255, minor: 255, patch: 255, build: 0))
+    }
+
     @Test func parsesFourComponentsWithBuild() {
         let version = FirmwareVersion(parsing: "1.2.3.45")
         #expect(version == FirmwareVersion(major: 1, minor: 2, patch: 3, build: 45))
+    }
+
+    @Test func parsesFourMaxedComponentsWithBuild() {
+        let version = FirmwareVersion(parsing: "255.255.255.65535")
+        #expect(version == FirmwareVersion(major: 255, minor: 255, patch: 255, build: 65535))
     }
 
     @Test func rejectsMalformedStrings() {

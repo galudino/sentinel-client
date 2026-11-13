@@ -31,7 +31,7 @@ extension FirmwareVersion {
     /// component is the `build`; defaults to `0` when omitted). Returns `nil` on a
     /// malformed string. Used by the firmware-selection flow (#20) and previews to
     /// turn a human-typed version into the packed wire form.
-    init?(parsing string: String) {
+    nonisolated init?(parsing string: String) {
         let parts = string.split(separator: ".", omittingEmptySubsequences: false).map(String.init)
         guard (3 ... 4).contains(parts.count),
               let major = UInt8(parts[0]),
@@ -46,8 +46,8 @@ extension FirmwareVersion {
 /// Ordered by `major`, then `minor`, `patch`, `build` — so the client can pick the
 /// newest available image (#20) and confirm a DFU actually moved the device
 /// forward (#22).
-extension FirmwareVersion: Comparable {
-    static func < (lhs: FirmwareVersion, rhs: FirmwareVersion) -> Bool {
+extension FirmwareVersion: nonisolated Comparable {
+    nonisolated static func < (lhs: FirmwareVersion, rhs: FirmwareVersion) -> Bool {
         (lhs.major, lhs.minor, lhs.patch, lhs.build) < (rhs.major, rhs.minor, rhs.patch, rhs.build)
     }
 }

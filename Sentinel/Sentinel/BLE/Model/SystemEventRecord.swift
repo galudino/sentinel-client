@@ -43,6 +43,16 @@ struct BootLifecycleBody: Equatable, Sendable {
 struct FirmwareUpdateBody: Equatable, Sendable {
     let fromVersion: FirmwareVersion // @8
     let toVersion: FirmwareVersion // @12
+    /// @16 — currently the raw `cy_ota` / MCUBoot result code the firmware records
+    /// for a `firmware_update_*` event (`firmware_update_record.mcuboot_result`).
+    ///
+    /// TODO(galudino/sentinel-firmware#83): the OTA-agent teardown hotfix is adding
+    /// a *discrete* failure-reason code for `firmware_update_failed` records
+    /// (`aborted` = 1 / `signal-lost` = 2 / `verify-failed` = 3). Once #83 lands and
+    /// the firmware emits that discrete code (confirm the exact field/encoding —
+    /// as of firmware `develop` this field still carries the raw `cy_rslt_t`), map
+    /// it to a typed `FirmwareUpdateFailureReason` here so `LogsView` can show the
+    /// reason. Not mirrored yet to avoid decoding a value the firmware doesn't emit.
     let mcubootResult: UInt32 // @16
     nonisolated static func decode(_ data: Data) -> FirmwareUpdateBody {
         FirmwareUpdateBody(

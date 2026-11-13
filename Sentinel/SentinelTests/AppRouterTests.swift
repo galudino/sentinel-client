@@ -203,6 +203,37 @@ struct AppRouterTests {
         #expect({ if case .connected = router.state { true } else { false } }())
     }
 
+    @Test func firmwareUpdateReconnectedLandsOnFreshPeer() async {
+        let (router, _) = await makeConnectedRouter()
+        guard case let .connected(original) = router.state else {
+            Issue.record("setup failed")
+            return
+        }
+        router.startFirmwareUpdate(FirmwareImage(version: "1.1.0"))
+        let fresh = ConnectedPeer(id: UUID(), name: "Sentinel")
+        router.firmwareUpdateReconnected(peer: fresh)
+        guard case let .connected(peer) = router.state else {
+            Issue.record("expected .connected after reconnect, got \(router.state)")
+            return
+        }
+        #expect(peer === fresh) // the fresh post-DFU connection
+        #expect(peer !== original) // never the stale pre-update peer
+    }
+
+    @Test func firmwareUpdateUnrecoverableReturnsToScanning() async {
+        let (router, _) = await makeConnectedRouter()
+        router.startFirmwareUpdate(FirmwareImage(version: "1.1.0"))
+        router.firmwareUpdateUnrecoverable() // failed OTA, link not recoverable
+        #expect(router.state == .scanning)
+    }
+
+    @Test func firmwareUpdateUnrecoverableIgnoredWhenNotUpdating() async {
+        let (router, _) = await makeConnectedRouter()
+        let before = router.state
+        router.firmwareUpdateUnrecoverable() // illegal from .connected
+        #expect(router.state == before)
+    }
+
     @Test func selectedTabPersistsAcrossDfuRoundTrip() async {
         let (router, _) = await makeConnectedRouter()
         router.selectedTab = .device

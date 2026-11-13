@@ -218,6 +218,18 @@ final class AppRouter {
         guard case .updatingFirmware = state else { return }
         state = .connected(peer: peer)
     }
+
+    /// Recovery after a *failed/interrupted* DFU could not re-establish a
+    /// known-good link (device out of range / gone, #50). Return to `.scanning` —
+    /// a well-defined entry state — rather than leaving the user on the stale
+    /// pre-update peer in `MainTabView`. Only valid while `.updatingFirmware`.
+    ///
+    /// The clean-link success case completes through ``firmwareUpdateReconnected(peer:)``
+    /// with the fresh peer; this is its fallback when no fresh link is available.
+    func firmwareUpdateUnrecoverable() {
+        guard case .updatingFirmware = state else { return }
+        state = .scanning
+    }
 }
 
 // MARK: - Timeout

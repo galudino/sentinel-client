@@ -20,6 +20,47 @@ the architecture docs rather than letting them accumulate here.
 
 ---
 
+**Last updated:** 2026-11-13 (late). **#59 merged to `develop` + `main`; bundle synced
+to firmware v1.0.2.** #59 bench-validated across the fw#71 interruption matrix (every
+successful DFU reached "Update complete"; after a power cut during the MCUBoot overwrite
+the app recovered on its own and landed in MainTabView). `Resources/Firmware/` now holds
+exactly: `sentinel-firmware_1.0.2.0.bin` (stock, the only stable ⇒ `recommended()`),
+`51.0.2.0-test` (+50 DFU target), `1.0.2.0-testbench` + `51.0.2.0-testbench` (Release
+testbench, OTA-signed), and `0.0.0.0-empty`; `FirmwareCatalogTests` updated to match.
+Test suite: 147 tests, 1 known flake (`DebugLogTests.filterRoundTripsThroughRawValue`,
+fails in full runs only — fix early so runs are green).
+
+**Open client work surfaced by the firmware 1.0.2 bench (Phase I):** #58 ("Recovering…"
+hangs — `recover()` starts with an unbounded ABORT write to a dead link; also via Try
+Again), #55 (phone Bluetooth off mid-DFU not detected — stuck at "Uploading 47%"), #61
+(keep the screen awake during DFU — auto-lock suspends the upload), #60 (land on
+MainTabView after DFU), #62 (auto-set the board's time when Unix Time reads 0 — fw#94),
+#54 (Logs auto-refresh), and mirroring fw#86 (`*_build_hi` bytes → full 16-bit build)
+plus fail reason 5 (interrupted, fw#71) in `FirmwareUpdateBody`.
+
+---
+
+**Earlier 2026-11-13:** **#59 DFU: post-update reconnect no longer hangs on
+"Reconnecting…" — COMMITTED on branch `59-ota-success-reconnect-bound` (`826e745`),
+bench-pending.** Bench repro with firmware #81: a *successful* DFU (1.0.2.111 →
+51.0.2.111; serial confirmed `firmware_update_completed`, board healthy) left the app
+stuck on "Reconnecting…". Root cause: the **success** path in `OTAUploader.run()`
+awaited `reconnector.reconnect()` (and the follow-on `readFirmwareVersion()`) with **no
+timeout** — unlike `recover()`, which #52/#53 already bound. CoreBluetooth's `connect`
+never times out, so a slow post-reboot reconnect hung `.reconnecting` forever even
+though the update had already succeeded. **Fix:** bound both via `reconnectWithinTimeout`
++ a new `readVersionWithinTimeout` (same race-and-abandon; the reconnected service is
+stashed main-actor → main-actor, never across the continuation). A confirmed swap whose
+reconnect/read times out resolves to `.complete` (the update DID succeed), never
+`.failed`; `FirmwareUpdateView` routes a completed-but-not-reconnected update to the
+device list (`firmwareUpdateUnrecoverable`) instead of `MainTabView` on the dead peer.
+New test `successReconnectTimesOutButStillCompletes` passes; full `SentinelTests` green
+**except the known pre-existing parallel-only flake
+`DebugLogTests.filterRoundTripsThroughRawValue`** (see the dedicated note below —
+unrelated to #59, codec is sound). Pairs with #52/#53/#58; firmware #81 validated
+on-device. **Next:** merge `59` → develop/main (git-flow), rebuild, re-run the DFU to
+confirm the clean landing.
+
 **Last updated:** 2026-11-13. **#57 Logs: acronym-aware `.other` event titles +
 title/subtitle polish — DONE + MERGED (develop + main).** The `.other` fallback
 humanizer split before every capital and lower-cased the rest, mangling acronyms
@@ -104,8 +145,15 @@ test on a 26.4 device (e.g. `EBCCED16-99AC-4DA2-9354-B989E1C39C46`). Squash `b0c
 on `develop` → `main` merge `c0993d6`; pre-squash history tag
 `50-ota-recover-clean-state-history` (`9ddc93d`); branch deleted; #50 closed; board
 Done. **Known pre-existing flaky test (unrelated, candidate follow-up):**
-`DebugLogTests.filterRoundTripsThroughRawValue()` passes 3/3 in isolation but trips
-intermittently under parallel full-suite runs (JSONEncoder/Set ordering). **Stray
+`DebugLogTests.filterRoundTripsThroughRawValue()` passes in isolation but fails under
+parallel full-suite runs — **reproduced 2/2 on 2026-11-13.** NOT a codec/ordering bug:
+the `.xcresult` expectation diff shows two **byte-identical** `DebugLogFilter` values
+(single-element sets — no ordering ambiguity) comparing `!=`. A correct value-type `==`
+returning false for identical contents, only under parallelism, points to **heap/runtime
+state corruption from a racy sibling test** (this suite has `@unchecked Sendable` BLE
+types with hand-rolled synchronization), not `DebugLogFilter`. Likely fixes: find+fix the
+data race, or mark the suite/`DebugLogTests` `.serialized` as a stopgap. The earlier
+"JSONEncoder/Set ordering" guess is superseded. **Stray
 file:** an untracked 0-byte `Sentinel/Sentinel/Resources/Firmware/sentinel-firmware_empty.bin`
 was in the index at session start (unrelated) — unstaged, left on disk; decide
 keep/delete.

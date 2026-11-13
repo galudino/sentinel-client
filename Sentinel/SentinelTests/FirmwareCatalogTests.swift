@@ -85,17 +85,25 @@ struct FirmwareCatalogTests {
         // carries Resources/Firmware, not the test bundle.
         let bundle = Bundle(for: BluetoothManager.self)
         let images = FirmwareCatalog.bundledImages(in: bundle)
-        let v101 = FirmwareVersion(major: 1, minor: 0, patch: 1, build: 0)
-        let vTest = FirmwareVersion(major: 255, minor: 255, patch: 255, build: 0)
+        // fw v1.0.2 bundle: stock 1.0.2.0, its +50 DFU target 51.0.2.0-test, the
+        // two -testbench images, and the 0-byte 0.0.0.0-empty rejection image.
+        let v102 = FirmwareVersion(major: 1, minor: 0, patch: 2, build: 0)
+        let vTest = FirmwareVersion(major: 51, minor: 0, patch: 2, build: 0)
 
         let versions = Set(images.map(\.version))
-        #expect(versions.contains(v101)) // real 1.0.1 (recommended baseline)
-        #expect(versions.contains(vTest)) // 255.255.255-test standout test image
+        #expect(versions.contains(v102)) // real 1.0.2.0 (recommended baseline)
+        #expect(versions.contains(vTest)) // 51.0.2.0-test (+50 DFU target)
         // Newest-first ordering.
         #expect(images.first?.version == images.map(\.version).max())
-        // The test build is flagged pre-release; the stable 1.0.1 is not.
-        #expect(images.first { $0.version == vTest }?.isPrerelease == true)
-        #expect(images.first { $0.version == v101 }?.isPrerelease == false)
+        // Every 51.0.2.0 image (-test, -testbench) is pre-release; the stock
+        // 1.0.2.0 is stable (its -testbench twin shares the version, so look
+        // for the unlabeled one).
+        let testImagesArePrerelease = images
+            .filter { $0.version == vTest }
+            .allSatisfy(\.isPrerelease)
+        let stockIsStable = images.contains { $0.version == v102 && !$0.isPrerelease }
+        #expect(testImagesArePrerelease)
+        #expect(stockIsStable)
         // Real signed MCUBoot images carry the header magic 0x96f3b83d (LE).
         if let latest = images.first {
             #expect(latest.data.count > 1000)

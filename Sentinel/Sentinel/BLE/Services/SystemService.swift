@@ -101,12 +101,18 @@ struct SystemServiceClient<Transport: BluetoothPeripheralTransport>: SystemServi
     }
 }
 
+nonisolated enum MockSystemServiceError: Error { case linkDown }
+
 final class MockSystemService: SystemService, @unchecked Sendable {
     var serialNumber: UInt32
     var firmwareVersion: FirmwareVersion
     var platformID: PlatformID
     var cpuTemperature: UInt16
     var readiness: DeviceReadiness
+    /// When `true`, ``readFirmwareVersion()`` throws — models a link that has gone
+    /// down. Lets `OTAUploader`'s recovery tests force the full reconnect path past
+    /// the #53 in-place liveness probe (which reads the firmware version).
+    var failReads = false
 
     init(
         serialNumber: UInt32 = 0x0000_ABCD,
@@ -124,7 +130,11 @@ final class MockSystemService: SystemService, @unchecked Sendable {
 
     func readSerialNumber() async throws -> UInt32 { serialNumber }
     func writeSerialNumber(_ serial: UInt32) async throws { serialNumber = serial }
-    func readFirmwareVersion() async throws -> FirmwareVersion { firmwareVersion }
+    func readFirmwareVersion() async throws -> FirmwareVersion {
+        if failReads { throw MockSystemServiceError.linkDown }
+        return firmwareVersion
+    }
+
     func readPlatformID() async throws -> PlatformID { platformID }
     func readCPUTemperature() async throws -> UInt16 { cpuTemperature }
     func setCPUTemperatureNotifying(_: Bool) async throws {}

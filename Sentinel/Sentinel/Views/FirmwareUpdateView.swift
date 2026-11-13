@@ -104,13 +104,15 @@ struct FirmwareUpdateView: View {
     private func retryFromCleanSlate() {
         Task {
             await uploader?.recover()
-            guard case .recovered = uploader?.state ?? .idle,
-                  let fresh = reconnector?.reconnectedPeer
-            else {
+            guard case .recovered = uploader?.state ?? .idle else {
                 router.firmwareUpdateUnrecoverable()
                 return
             }
-            let (freshUploader, freshReconnector) = makeUploader(for: fresh)
+            // A full reconnect yields a fresh peer; the fast path (#53) reuses the
+            // original link that never dropped. Either way the retry runs on a
+            // confirmed-live connection — never the stale pre-failure transport.
+            let target = reconnector?.reconnectedPeer ?? peer
+            let (freshUploader, freshReconnector) = makeUploader(for: target)
             reconnector = freshReconnector
             uploader = freshUploader
             freshUploader.start(image: image)
@@ -123,8 +125,11 @@ struct FirmwareUpdateView: View {
     private func returnToCleanConnection() {
         Task {
             await uploader?.recover()
-            if case .recovered = uploader?.state ?? .idle, let fresh = reconnector?.reconnectedPeer {
-                router.firmwareUpdateReconnected(peer: fresh)
+            if case .recovered = uploader?.state ?? .idle {
+                // Fresh peer from a full reconnect, or the original link the fast
+                // path (#53) confirmed is still live — never the stale pre-failure
+                // peer the old `.failed` path returned to.
+                router.firmwareUpdateReconnected(peer: reconnector?.reconnectedPeer ?? peer)
             } else {
                 router.firmwareUpdateUnrecoverable()
             }

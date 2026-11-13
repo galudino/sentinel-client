@@ -110,7 +110,8 @@ struct SystemEventRecordTests {
         #expect(header.eventTypeRaw == 0xAA)
         #expect(header.eventType == nil)
         #expect(raw == data)
-        #expect(decoded.displayTitle == "Unknown event 0xAA")
+        #expect(decoded.displayTitle == "Unknown event")
+        #expect(decoded.displaySubtitle == "type 0xAA")
     }
 
     @Test func shortBufferFailsToDecode() {
@@ -127,5 +128,45 @@ struct SystemEventRecordTests {
         #expect(records.count == 2)
         #expect(records.first?.event == .bootComplete)
         #expect(records.last?.event == .faultRaised)
+    }
+
+    // MARK: - Acronym-aware `.other` titles (#57)
+
+    /// `SystemEvent.displayName` tokenizes the case name on real camelCase/acronym
+    /// boundaries and keeps vocabulary acronyms (BLE/RPM/RTC/…) upper-cased, so the
+    /// generated `.other` titles read uniformly with the explicit ones — no more
+    /// "Rtc set from b l e" / "Fan r p m threshold changed".
+    @Test func otherEventDisplayNamesPreserveAcronyms() {
+        #expect(SystemEvent.rtcSetFromBLE.displayName == "RTC set from BLE")
+        #expect(SystemEvent.fanRPMThresholdChanged.displayName == "Fan RPM threshold changed")
+        #expect(SystemEvent.fanRPMMaxExceeded.displayName == "Fan RPM max exceeded")
+        #expect(SystemEvent.bleStackInitialized.displayName == "BLE stack initialized")
+        #expect(SystemEvent.bleUnpaired.displayName == "BLE unpaired")
+        #expect(SystemEvent.configChanged.displayName == "Config changed")
+        #expect(SystemEvent.configResetToDefault.displayName == "Config reset to default")
+        #expect(SystemEvent.serialNumberSet.displayName == "Serial number set")
+        #expect(SystemEvent.userInput.displayName == "User input")
+        #expect(SystemEvent.sensorThresholdCrossed.displayName == "Sensor threshold crossed")
+    }
+
+    /// The `.other` branch of `displayTitle` routes through `displayName`, so a decoded
+    /// record renders the acronym-aware title end to end.
+    @Test func otherEventDisplayTitleUsesAcronymAwareName() throws {
+        let decoded = try #require(SystemEventRecord.decode(record(event: .rtcSetFromBLE)))
+        #expect(decoded.displayTitle == "RTC set from BLE")
+    }
+
+    /// Boot complete reads as a plain title with the firmware version as its subtitle
+    /// (not folded into the title); shutdown variants carry no version subtitle.
+    @Test func bootCompleteTitleIsPlainWithVersionSubtitle() throws {
+        var body: [Int: UInt8] = [8: 1, 9: 4, 10: 2, 11: 9] // fw 1.4.2
+        put32(1, at: 12, into: &body)
+        let decoded = try #require(SystemEventRecord.decode(record(event: .bootComplete, body: body)))
+        #expect(decoded.displayTitle == "Boot complete")
+        #expect(decoded.displaySubtitle == "v1.4.2")
+
+        let shutdown = try #require(SystemEventRecord.decode(record(event: .shutdownClean, body: body)))
+        #expect(shutdown.displayTitle == "Clean shutdown")
+        #expect(shutdown.displaySubtitle == nil)
     }
 }

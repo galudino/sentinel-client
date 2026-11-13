@@ -20,7 +20,27 @@ the architecture docs rather than letting them accumulate here.
 
 ---
 
-**Last updated:** 2026-11-13. **#59 DFU: post-update reconnect no longer hangs on
+**Last updated:** 2026-11-13 (late). **#59 merged to `develop` + `main`; bundle synced
+to firmware v1.0.2.** #59 bench-validated across the fw#71 interruption matrix (every
+successful DFU reached "Update complete"; after a power cut during the MCUBoot overwrite
+the app recovered on its own and landed in MainTabView). `Resources/Firmware/` now holds
+exactly: `sentinel-firmware_1.0.2.0.bin` (stock, the only stable ⇒ `recommended()`),
+`51.0.2.0-test` (+50 DFU target), `1.0.2.0-testbench` + `51.0.2.0-testbench` (Release
+testbench, OTA-signed), and `0.0.0.0-empty`; `FirmwareCatalogTests` updated to match.
+Test suite: 147 tests, 1 known flake (`DebugLogTests.filterRoundTripsThroughRawValue`,
+fails in full runs only — fix early so runs are green).
+
+**Open client work surfaced by the firmware 1.0.2 bench (Phase I):** #58 ("Recovering…"
+hangs — `recover()` starts with an unbounded ABORT write to a dead link; also via Try
+Again), #55 (phone Bluetooth off mid-DFU not detected — stuck at "Uploading 47%"), #61
+(keep the screen awake during DFU — auto-lock suspends the upload), #60 (land on
+MainTabView after DFU), #62 (auto-set the board's time when Unix Time reads 0 — fw#94),
+#54 (Logs auto-refresh), and mirroring fw#86 (`*_build_hi` bytes → full 16-bit build)
+plus fail reason 5 (interrupted, fw#71) in `FirmwareUpdateBody`.
+
+---
+
+**Earlier 2026-11-13:** **#59 DFU: post-update reconnect no longer hangs on
 "Reconnecting…" — COMMITTED on branch `59-ota-success-reconnect-bound` (`826e745`),
 bench-pending.** Bench repro with firmware #81: a *successful* DFU (1.0.2.111 →
 51.0.2.111; serial confirmed `firmware_update_completed`, board healthy) left the app

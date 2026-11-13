@@ -189,15 +189,22 @@ struct OTAUploaderTests {
         #expect(reason.contains("empty"))
     }
 
-    // MARK: Recovery (#50)
+    // MARK: Recovery (#50, #52, #53)
 
-    /// A failed upload recovers to a known-good link: `.failed` → `recover()` →
-    /// `.recovered`, with a best-effort ABORT sent and the reconnector exercised.
-    @Test func recoverReconnectsAndReachesRecovered() async {
+    /// #53 fast path: a failure that never dropped the link (a verify rejection,
+    /// before the device self-resets) recovers *in place* — the still-live link is
+    /// reused and the full reconnect is skipped. `.failed` → `recover()` →
+    /// `.recovered`, with a best-effort ABORT sent and the reconnector left untouched.
+    @Test func recoverReusesLiveLinkWithoutReconnecting() async {
         let ota = ScriptedOTAService()
         ota.statusForVerify = OTAUploader.Status.verificationFailed.rawValue
         let reconnector = MockFirmwareReconnector(system: MockSystemService(firmwareVersion: target))
-        let uploader = OTAUploader(ota: ota, system: MockSystemService(), mtu: 247, reconnector: reconnector)
+        // The uploader's own link is alive (reads succeed), so the liveness probe
+        // passes and recovery short-circuits before any reconnect.
+        let uploader = OTAUploader(
+            ota: ota, system: MockSystemService(firmwareVersion: target),
+            mtu: 247, reconnector: reconnector
+        )
 
         await run(uploader, image())
         guard case .failed = uploader.state else {
@@ -208,9 +215,26 @@ struct OTAUploaderTests {
         await uploader.recover()
 
         #expect(uploader.state == .recovered)
-        #expect(reconnector.reconnectCount == 1)
+        #expect(reconnector.reconnectCount == 0) // fast path — no rescan/reconnect
         #expect(uploader.progressFraction == 0)
         #expect(ota.controlWrites.contains { $0.first == OTAUploader.Command.abort.rawValue })
+    }
+
+    /// #53 slow path: when the original link is gone (the liveness probe fails),
+    /// recovery falls through to the full reconnect and reaches `.recovered`.
+    @Test func recoverReconnectsWhenOriginalLinkIsDown() async {
+        let ota = ScriptedOTAService()
+        ota.statusForVerify = OTAUploader.Status.verificationFailed.rawValue
+        let deadLink = MockSystemService(firmwareVersion: target)
+        deadLink.failReads = true // the original link dropped — probe fails
+        let reconnector = MockFirmwareReconnector(system: MockSystemService(firmwareVersion: target))
+        let uploader = OTAUploader(ota: ota, system: deadLink, mtu: 247, reconnector: reconnector)
+
+        await run(uploader, image())
+        await uploader.recover()
+
+        #expect(uploader.state == .recovered)
+        #expect(reconnector.reconnectCount == 1) // the probe failed, so the reconnect ran
     }
 
     /// Recovery that can't re-establish the link stays `.failed` (the view then
@@ -218,9 +242,11 @@ struct OTAUploaderTests {
     @Test func recoverStaysFailedWhenReconnectFails() async {
         let ota = ScriptedOTAService()
         ota.statusForVerify = OTAUploader.Status.verificationFailed.rawValue
+        let deadLink = MockSystemService(firmwareVersion: target)
+        deadLink.failReads = true // force past the #53 fast path to the reconnect
         let reconnector = MockFirmwareReconnector(system: MockSystemService(firmwareVersion: target))
         reconnector.shouldFail = true
-        let uploader = OTAUploader(ota: ota, system: MockSystemService(), mtu: 247, reconnector: reconnector)
+        let uploader = OTAUploader(ota: ota, system: deadLink, mtu: 247, reconnector: reconnector)
 
         await run(uploader, image())
         await uploader.recover()
@@ -231,12 +257,39 @@ struct OTAUploaderTests {
         }
     }
 
-    /// With no reconnector (tests/previews) there is no link to re-establish, so
+    /// #52: a reconnect that never completes (CoreBluetooth's `connect` has no
+    /// timeout) must not hang on `.recovering` forever — `recoveryTimeout` resolves
+    /// `recover()` to `.failed`, so the view can route to scanning.
+    @Test func recoverTimesOutWhenReconnectHangs() async {
+        let ota = ScriptedOTAService()
+        ota.statusForVerify = OTAUploader.Status.verificationFailed.rawValue
+        let deadLink = MockSystemService(firmwareVersion: target)
+        deadLink.failReads = true // force past the #53 fast path to the reconnect, which hangs
+        let reconnector = MockFirmwareReconnector(system: MockSystemService(firmwareVersion: target))
+        reconnector.shouldHang = true
+        let uploader = OTAUploader(
+            ota: ota, system: deadLink, mtu: 247,
+            reconnector: reconnector, recoveryTimeout: .milliseconds(50)
+        )
+
+        await run(uploader, image())
+        await uploader.recover()
+
+        guard case .failed = uploader.state else {
+            Issue.record("expected .failed after a hung reconnect timed out, got \(uploader.state)")
+            return
+        }
+        #expect(reconnector.reconnectCount == 1)
+    }
+
+    /// With no reconnector and a dead link there is nothing to re-establish, so
     /// recovery stays `.failed`.
     @Test func recoverStaysFailedWithoutReconnector() async {
         let ota = ScriptedOTAService()
         ota.statusForVerify = OTAUploader.Status.verificationFailed.rawValue
-        let uploader = OTAUploader(ota: ota, system: MockSystemService(firmwareVersion: target), mtu: 247)
+        let deadLink = MockSystemService(firmwareVersion: target)
+        deadLink.failReads = true // no live link to reuse, and no reconnector
+        let uploader = OTAUploader(ota: ota, system: deadLink, mtu: 247)
 
         await run(uploader, image())
         await uploader.recover()

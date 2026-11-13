@@ -141,6 +141,19 @@ final class OTAUploader {
     /// Timeouts per the #22 spec.
     private let controlPointTimeout: Duration = .seconds(10)
     private let verifyTimeout: Duration = .seconds(30)
+    /// Upper bound on the in-place liveness probe in ``recover()`` (#53) — a quick
+    /// firmware-version read over the *original* link. Short because a read over a
+    /// live link returns in well under a second; a dead link whose disconnect hasn't
+    /// surfaced yet is abandoned at this bound and recovery falls through to the full
+    /// reconnect below.
+    private let livenessProbeTimeout: Duration = .seconds(2)
+    /// Upper bound on the post-failure reconnect in ``recover()`` (#52). The device
+    /// reboots on a failed OTA (firmware #84), so it re-advertises within a couple of
+    /// seconds; this covers the reboot + a full rescan window + connect. On timeout
+    /// `recover()` resolves to `.failed` so the caller routes to `.scanning` instead
+    /// of the UI hanging on "Recovering…" — CoreBluetooth's `connect` has no timeout
+    /// of its own. Injectable so tests don't wait the real duration.
+    private let recoveryTimeout: Duration
 
     /// The running upload, retained so ``cancel()`` can abort it.
     private var runTask: Task<Void, Never>?
@@ -150,16 +163,24 @@ final class OTAUploader {
     /// iterator) so `next()` can be `await`-ed without violating exclusive access.
     private var statusReader: StatusReader?
 
+    /// `true` once the device has self-reset (entered ``State/restarting``). The
+    /// original link is then gone for good, so ``recover()`` skips the in-place
+    /// liveness probe (#53) and goes straight to the full reconnect. Reset on each
+    /// ``start(image:)`` so a clean-slate retry re-evaluates from scratch.
+    private var deviceDidReset = false
+
     init(
         ota: any OTAService,
         system: any SystemService,
         mtu: Int,
-        reconnector: (any FirmwareReconnector)? = nil
+        reconnector: (any FirmwareReconnector)? = nil,
+        recoveryTimeout: Duration = .seconds(45)
     ) {
         self.ota = ota
         self.system = system
         self.mtu = mtu
         self.reconnector = reconnector
+        self.recoveryTimeout = recoveryTimeout
     }
 
     // MARK: Intents
@@ -169,6 +190,7 @@ final class OTAUploader {
     func start(image: FirmwareImage) {
         guard runTask == nil else { return }
         progressFraction = 0
+        deviceDidReset = false
         runTask = Task { [weak self] in await self?.run(image: image) }
     }
 
@@ -205,15 +227,107 @@ final class OTAUploader {
         // Best-effort device-side teardown; no-op if the link is already gone.
         try? await ota.writeControlPoint(Data([Command.abort.rawValue]))
 
+        // Fast path (#53): a failure *before* the device self-reset — an empty image,
+        // or a rejected Prepare/Start/Verify — never dropped the original link, so the
+        // device is still connected. Confirm it with a bounded read and reuse it,
+        // instead of paying the post-reboot path's full re-advertise + reconnect
+        // window (the rescan can't even see a still-connected peer, so it would burn
+        // the whole `recoveryTimeout`). `reconnectedPeer` stays nil, so the view keeps
+        // the original (still-connected) peer. Mid-upload signal loss fails the probe
+        // and falls through to the reconnect below.
+        if !deviceDidReset, await probeLinkAlive(timeout: livenessProbeTimeout) {
+            state = .recovered
+            return
+        }
+
         guard let reconnector else {
             state = .failed(message) // no central to reconnect with — unrecoverable here
             return
         }
         do {
-            _ = try await reconnector.reconnect()
+            // #52: bound the reconnect — CoreBluetooth's connect never times out, so
+            // without this the UI could hang on "Recovering…" forever. On timeout we
+            // resolve to `.failed`; the view then routes to `.scanning`.
+            try await reconnectWithinTimeout(reconnector)
             state = .recovered
         } catch {
             state = .failed(Self.message(for: error))
+        }
+    }
+
+    /// Guards the recovery race so the continuation resumes exactly once. Both racers
+    /// settle on the main actor, so a plain flag suffices (no lock).
+    private var recoveryRaceSettled = false
+
+    /// Await `reconnector.reconnect()` bounded by ``recoveryTimeout``; throws
+    /// `OTAError.timedOut` if it doesn't finish in time.
+    ///
+    /// AsyncBluetooth's `connect` stores a continuation and does **not** honor task
+    /// cancellation — it never times out on its own — so a `TaskGroup` would block on
+    /// it (groups await every child). Instead we race two unstructured main-actor
+    /// tasks through a continuation and *abandon* the reconnect if the watchdog wins;
+    /// `recover()` then resolves to `.failed` and the view routes to `.scanning`
+    /// rather than hanging on "Recovering…". The reconnected peer is held by the
+    /// ``FirmwareReconnector`` itself, so the non-`Sendable` service is discarded
+    /// inside the main-actor task and never crosses an isolation boundary.
+    private func reconnectWithinTimeout(_ reconnector: any FirmwareReconnector) async throws {
+        recoveryRaceSettled = false
+        let timeout = recoveryTimeout
+        let reconnected: Bool = await withCheckedContinuation { continuation in
+            // Racer 1: the reconnect (may outlive this call if connect never returns).
+            Task { @MainActor [weak self] in
+                var ok = false
+                do { _ = try await reconnector.reconnect(); ok = true } catch { ok = false }
+                guard let self, !self.recoveryRaceSettled else { return }
+                recoveryRaceSettled = true
+                continuation.resume(returning: ok)
+            }
+            // Racer 2: the watchdog.
+            Task { @MainActor [weak self] in
+                try? await Task.sleep(for: timeout)
+                guard let self, !self.recoveryRaceSettled else { return }
+                recoveryRaceSettled = true
+                continuation.resume(returning: false)
+            }
+        }
+        if !reconnected { throw OTAError.timedOut }
+    }
+
+    /// Guards the liveness-probe race so its continuation resumes exactly once. Both
+    /// racers settle on the main actor, so a plain flag suffices (no lock). The probe
+    /// and the reconnect never run concurrently (the probe settles first, in
+    /// ``recover()``), so a separate flag keeps the two races cleanly independent.
+    private var probeRaceSettled = false
+
+    /// Bounded liveness probe on the *original* link: a quick firmware-version read
+    /// raced against `timeout`, returning `true` only if the read comes back in time.
+    /// ``recover()`` uses it to detect the common case where the failure never dropped
+    /// the link (empty image, a rejected command) so the device is still connected —
+    /// recovery then reuses it instead of a full reconnect (#53).
+    ///
+    /// Mirrors ``reconnectWithinTimeout(_:)``'s main-actor race: a GATT read can hang
+    /// on a disconnect that hasn't surfaced yet, and that racer doesn't honor
+    /// cancellation, so the loser is abandoned rather than awaited. Both racers run on
+    /// the main actor, so the non-`Sendable` ``system`` never crosses an isolation
+    /// boundary.
+    private func probeLinkAlive(timeout: Duration) async -> Bool {
+        probeRaceSettled = false
+        return await withCheckedContinuation { continuation in
+            // Racer 1: the read (may outlive this call if the link is wedged).
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                let alive = await (try? system.readFirmwareVersion()) != nil
+                guard !probeRaceSettled else { return }
+                probeRaceSettled = true
+                continuation.resume(returning: alive)
+            }
+            // Racer 2: the watchdog.
+            Task { @MainActor [weak self] in
+                try? await Task.sleep(for: timeout)
+                guard let self, !self.probeRaceSettled else { return }
+                probeRaceSettled = true
+                continuation.resume(returning: false)
+            }
         }
     }
 
@@ -263,6 +377,9 @@ final class OTAUploader {
             try await expectOK(timeout: verifyTimeout)
 
             // 5. On ok the device self-resets + disconnects — success, not error.
+            //    The original link is now gone, so any later recovery must do a full
+            //    reconnect rather than probe the (dead) original link.
+            deviceDidReset = true
             state = .restarting
 
             // 6. Reconnect (production) then confirm the running version. With no

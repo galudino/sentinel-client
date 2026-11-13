@@ -76,12 +76,16 @@ enum ScriptedOTAError: Error { case linkDropped }
 final class MockFirmwareReconnector: FirmwareReconnector, @unchecked Sendable {
     let system: any SystemService
     var shouldFail = false
+    /// Simulate CoreBluetooth's un-timed-out `connect`: never return on its own, so
+    /// the uploader's `recoveryTimeout` must be what resolves `recover()`.
+    var shouldHang = false
     private(set) var reconnectCount = 0
 
     init(system: any SystemService) { self.system = system }
 
     func reconnect() async throws -> any SystemService {
         reconnectCount += 1
+        if shouldHang { try await Task.sleep(for: .seconds(60)) } // cancelled by the timeout
         if shouldFail { throw ScriptedOTAError.linkDropped }
         return system
     }

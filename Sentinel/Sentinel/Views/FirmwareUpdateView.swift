@@ -57,17 +57,7 @@ struct FirmwareUpdateView: View {
         .animation(.smooth, value: state)
         .task {
             guard !isPreview, uploader == nil else { return }
-            let reconnector = CentralFirmwareReconnector(
-                central: router.bluetoothManager,
-                peripheralID: peer.id,
-                name: peer.name
-            )
-            let uploader = OTAUploader(
-                ota: peer.ota,
-                system: peer.system,
-                mtu: peer.negotiatedMTU,
-                reconnector: reconnector
-            )
+            let (uploader, reconnector) = makeUploader(for: peer)
             self.reconnector = reconnector
             self.uploader = uploader
             uploader.start(image: image)
@@ -86,6 +76,58 @@ struct FirmwareUpdateView: View {
             Button("Keep updating", role: .cancel) {}
         } message: {
             Text("Cancelling will leave the device on its current firmware. The partial upload will be discarded.")
+        }
+    }
+
+    // MARK: - Recovery (#50)
+
+    /// Build a fresh uploader + reconnector bound to `peer`. Used for the initial
+    /// upload and for a clean-slate retry on the *reconnected* peer.
+    private func makeUploader(for peer: ConnectedPeer) -> (OTAUploader, CentralFirmwareReconnector) {
+        let reconnector = CentralFirmwareReconnector(
+            central: router.bluetoothManager,
+            peripheralID: peer.id,
+            name: peer.name
+        )
+        let uploader = OTAUploader(
+            ota: peer.ota,
+            system: peer.system,
+            mtu: peer.negotiatedMTU,
+            reconnector: reconnector
+        )
+        return (uploader, reconnector)
+    }
+
+    /// Recover from `.failed` to a known-good link, then retry the update from a
+    /// clean slate (a fresh uploader on the reconnected peer). If the link can't
+    /// be re-established, fall back to `.scanning` rather than the stale peer.
+    private func retryFromCleanSlate() {
+        Task {
+            await uploader?.recover()
+            guard case .recovered = uploader?.state ?? .idle,
+                  let fresh = reconnector?.reconnectedPeer
+            else {
+                router.firmwareUpdateUnrecoverable()
+                return
+            }
+            let (freshUploader, freshReconnector) = makeUploader(for: fresh)
+            reconnector = freshReconnector
+            uploader = freshUploader
+            freshUploader.start(image: image)
+        }
+    }
+
+    /// Recover from `.failed` and return to `MainTabView` on the *fresh*
+    /// connection (not the stale pre-update peer). Falls back to `.scanning` if the
+    /// device is gone.
+    private func returnToCleanConnection() {
+        Task {
+            await uploader?.recover()
+            if case .recovered = uploader?.state ?? .idle, let fresh = reconnector?.reconnectedPeer {
+                router.firmwareUpdateReconnected(peer: fresh)
+            } else {
+                router.firmwareUpdateUnrecoverable()
+            }
         }
     }
 
@@ -155,6 +197,10 @@ struct FirmwareUpdateView: View {
             Text("Please wait — do not disconnect the device.")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
+        case .recovering:
+            Text("Restoring a stable connection…")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
         default:
             EmptyView()
         }
@@ -173,15 +219,21 @@ struct FirmwareUpdateView: View {
             .buttonStyle(.borderedProminent)
 
         case .failed:
+            // Both paths first re-establish a known-good link (#50): the app must
+            // never return to `MainTabView` on the stale pre-update connection.
             HStack(spacing: 16) {
-                Button("Cancel", role: .cancel) {
-                    router.cancelFirmwareUpdate()
+                Button("Back to Device", role: .cancel) {
+                    returnToCleanConnection()
                 }
-                Button("Try again") {
-                    uploader?.start(image: image)
+                Button("Try Again") {
+                    retryFromCleanSlate()
                 }
                 .buttonStyle(.borderedProminent)
             }
+
+        case .recovering, .recovered:
+            // Transient — the recovery handler routes or rebuilds once it settles.
+            EmptyView()
 
         default:
             // Cancellable through `.uploading`; from `.validating` on the button
@@ -220,6 +272,7 @@ struct FirmwareUpdateView: View {
     #Preview("Uploading") { previewView(.uploading(chunkIndex: 112, totalChunks: 256), progress: 0.44) }
     #Preview("Validating") { previewView(.validating, progress: 1) }
     #Preview("Reconnecting") { previewView(.reconnecting, progress: 1) }
+    #Preview("Recovering") { previewView(.recovering, progress: 0) }
     #Preview("Complete") { previewView(.complete, progress: 1) }
     #Preview("Failed") { previewView(.failed("The device rejected the update: Image verification failed.")) }
 #endif
